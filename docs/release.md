@@ -29,10 +29,26 @@ npm mapping was created or contacted. Before the first publish, the owner must:
 1. Push this repository to `github.com/qduc/agent-runtime`.
 2. Create the GitHub **environment `npm-agent-packages`** with any desired
    reviewers/protection rules.
-3. Register npm **Trusted Publisher** mappings for `@qduc/agent-wire` and
-   `@qduc/agent-core` pointing at this repository and
-   `.github/workflows/publish-agent-packages.yml` (npm OIDC provenance requires
-   it; the publish input fails closed without it).
+3. Confirm ownership of the `@qduc` scope. Bootstrap a new package with an
+   authenticated first publish only if npm requires it before package settings
+   exist; this is a separate user-assisted step using validated tarballs. Never
+   put a long-lived npm token in this repository.
+4. Register npm **Trusted Publisher** mappings for each package: GitHub user
+   `qduc`, repository `agent-runtime`, workflow filename
+   `publish-agent-packages.yml` (filename only), environment `npm-agent-packages`.
+   Explicitly enable **direct npm publish**; staged publishing permission alone
+   does not authorize this workflow.
+
+Validation also runs `pnpm smoke:checkout`: it installs, builds, typechecks, and
+tests committed HEAD in a temporary clone outside the current dependency tree.
+This gate caught missing SSH/WebSocket type dependencies that a nested checkout
+under Term2 had accidentally inherited. The tarball smoke remains separate and
+checks public declarations without `skipLibCheck`.
+
+If one package succeeds and the other fails, retry only the failed package.
+If a bootstrap already published `0.1.0`, do not republish that version. A
+successful publish may precede npm read visibility by minutes; an immediate 404
+does not justify repeating a successful publish or inventing another version.
 
 Then: run the workflow, keep `publish` unticked to rehearse validation, and tick
 `publish` (after the environment gate) to release.

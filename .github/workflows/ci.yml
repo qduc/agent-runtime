@@ -28,6 +28,7 @@ jobs:
           version: 11.7.0
           run_install: false
       - run: pnpm install --frozen-lockfile
+      - run: pnpm smoke:checkout
       - run: pnpm build
       - run: pnpm typecheck
       - run: pnpm test

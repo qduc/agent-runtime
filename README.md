@@ -31,7 +31,12 @@ pnpm build       # compile both packages (core also copies prompt assets to dist
 pnpm typecheck   # strict tsc over source + tests
 pnpm test        # unit tests for both packages + release-safety tests
 pnpm smoke       # pack both tarballs, install them into a temp consumer, run runtime + strict tsc checks
+pnpm smoke:checkout # rebuild/typecheck/test committed HEAD in an isolated temporary git clone
 ```
+
+The checkout gate requires a commit and network access. It runs outside any
+parent application's dependency tree, preventing a nested checkout from hiding
+missing build-time dependencies. CI and release validation both run this gate.
 
 ## Publishing
 
