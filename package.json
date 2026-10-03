@@ -1,0 +1,35 @@
+{
+  "name": "@qduc/agent-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Independent agent runtime packages: headless session runtime, provider registries, and wire contracts",
+  "license": "MIT",
+  "author": "qduc",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/qduc/agent-runtime.git"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": ">=11.0.0"
+    }
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test && cross-env NODE_ENV=test vitest run --config vitest.config.ts",
+    "smoke": "node scripts/agent-package-smoke.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "cross-env": "^10.1.0",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.9",
+    "yaml": "^2.9.0"
+  }
+}
