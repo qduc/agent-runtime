@@ -5,11 +5,20 @@
 | Package source | Event API | Configure receipt API | Interaction DTO | Consumer status |
 | --- | --- | --- | --- | --- |
 | 0.1.0 | schema1, unqualified legacy exports | none in this package | version1 | Existing consumers; direct parity gaps remain |
-| 0.2.0 | retained schema1 AND explicit named schema2 exports | explicit schema2 native configure wrapper | retained version1 | Source only; no new artifact/endpoint/browser acceptance yet |
+| 0.2.0 | retained schema1 AND explicit named schema2 exports, including accepted cost/goal/notice evidence | explicit schema2 native configure wrapper | retained version1 | Source only; no new artifact/endpoint/browser acceptance yet |
 
 Each contract: [v1](v1.md), [v2](v2.md). Package semantic version does not itself
 negotiate an event or interaction schema. The unchanged v1 parser rejects v2;
 the new v2 parsers reject v1. There is no implicit compatibility conversion.
+
+The eight accepted-only cost/request_cost_recorded/goal/goal_proposed/
+verification/notice/background_notice_enqueued/background_notices_delivered
+names complete the same still-unreleased0.2.0/schema2 source contract, not a
+0.2.1 release. V1, the live allowlist, envelope fields and configure receipts
+are unchanged. See [v2 accounting and scope](v2.md#accepted-cost-goals-and-notices):
+root aggregate replacement and physical request upsert are distinct; neither
+cost nor request_cost_recorded is branch-wrapped. Shared payload validation
+remains structural, not a duplicate of native domain schemas.
 
 ## Local artifact route — no publication required
 
@@ -33,8 +42,12 @@ No release, push, deploy or registry permission follows from this document.
    v2 accepted envelope, preserves aggregate arrays and rotation semantics,
    keeps live envelopes separate and adds explicit format/version negotiation.
    It must collect a complete boundary before publishing it, not flush each
-   projected change separately. Source adapters that only expose per-change
-   events must be extended at the real boundary, not time-window grouped.
+   projected change separately. Explicitly map the eight raw public evidence
+   names; aggregate cost replaces state and request records upsert by real
+   requestId without another branch wrapper or duplicate charge. No aggregate
+   is synthesized when a native producer is absent. Source adapters that only
+   expose per-change events must be extended at the real boundary, not
+   time-window grouped.
 3. Browser parses v2, validates application payloads, validates the single SSE ID
    equals accepted seq, rejects an SSE ID on live frames, stages/reduces the whole
    accepted batch atomically, and commits its view/cursor together. Sparse
@@ -62,6 +75,10 @@ real accepted compaction payload optionality/crash correlation/no extra charge;
 live frame non-durability and required native replayable progress; configure
 pending/success/rejected/interrupted/nonreceipt errors, original outcomes across
 later mutations, stable-key replay/conflict/stale/busy and discovery separation.
+Also establish accepted-only evidence retention, rejection of branch-wrapped
+cost/request receipts, same-request corrections without duplicate accounting,
+null/absent/empty/zero preservation and real root/branch hydration without
+invented aggregates or historical state.
 Run package build/typecheck/tests/tarball/public-import checks and the real
 migrated server/browser workflow, including failure/reconnect paths, only when
 authorized after the freeze. None are claimed by these docs.

@@ -27,6 +27,14 @@ export const AGENT_CHANGE_TYPES_V2 = [
   'command_finished',
   'history_replaced',
   'configuration',
+  'cost',
+  'request_cost_recorded',
+  'goal',
+  'goal_proposed',
+  'verification',
+  'notice',
+  'background_notice_enqueued',
+  'background_notices_delivered',
 ] as const;
 export const AGENT_LIVE_CHANGE_TYPES_V2 = [
   'reasoning_delta',
@@ -244,6 +252,11 @@ export function parseAgentEventEnvelopeV2(value: unknown, expectedSessionId?: st
         invalid();
     }
     switch (change.type) {
+      case 'cost':
+      case 'request_cost_recorded':
+        // Root aggregate or physically scoped receipt: never a second branch charge.
+        if ('branch' in change) invalid();
+        break;
       case 'queue_changed':
         validateQueue(payload.change);
         break;
