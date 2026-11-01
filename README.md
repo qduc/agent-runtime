@@ -9,6 +9,16 @@ Independent, publishable agent runtime packages extracted from Term2:
 
 Both packages are ESM-only, require Node.js 20+, and publish to npm as MIT.
 
+## Wire version status
+
+Wire package source0.2.0 retains event schema1 and interaction DTOversion1 and
+adds explicit event/configure schema2 APIs. See the [wire package version
+ledger](packages/wire/docs/migration-v1-v2.md) and its separate v1/v2 contract
+documents. This is source-only preparation, not a published version, built
+artifact, migrated consumer, or canonical endpoint activation claim. Core source
+remains0.1.0. Packaging and verification for this change are deferred until all
+M6 implementation is complete.
+
 ## Repository layout
 
 ```

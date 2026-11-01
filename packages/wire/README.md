@@ -1,29 +1,36 @@
 # @qduc/agent-wire
 
-Dependency-free agent event and interaction wire contracts. Requires Node.js 20
-or later. This is an ESM-only package with TypeScript declarations and no
-runtime dependencies.
+Dependency-free, ESM-only event/interaction contracts for Node.js20+.
+Package source0.2.0 adds explicit schema2 APIs while retaining schema1 and
+interaction DTOversion1. **Source delivery only:** no0.2.0 artifact or migrated
+consumer support is claimed until packaging and consumer work is complete.
+
+## Choose an explicit contract
+
+- [Schema v1](docs/v1.md): unchanged `AgentEventEnvelope`, `AGENT_EVENT_TYPES`,
+  `parseAgentEventEnvelope` / `parseEventEnvelope`, existing strict interaction
+  DTOversion1 and its validator. These unqualified exports still mean v1.
+- [Schema v2](docs/v2.md): named `AgentEventEnvelopeV2`, `AgentChangeV2`,
+  `parseAgentEventEnvelopeV2`; atomic accepted batches with real sparse seq/at,
+  separate live-only envelopes, aggregate queue/rotation/native compaction,
+  and `AgentConfigureResultV2` / `parseAgentConfigureResultV2` native receipts.
+- [Version ledger, migration and rollback](docs/migration-v1-v2.md): package vs
+  schema versions, local artifact route and actual server/browser/BFF handoffs.
 
 ```ts
-import { parseAgentEventEnvelope } from '@qduc/agent-wire';
-
-const event = parseAgentEventEnvelope({
-  schemaVersion: 1,
-  id: 1,
-  sessionId: 'session-1',
-  type: 'turn_completed',
-  occurredAt: '2026-10-03T00:00:00Z',
-  payload: {},
+import { parseAgentEventEnvelopeV2 } from '@qduc/agent-wire';
+const event = parseAgentEventEnvelopeV2({
+  schemaVersion: 2, kind: 'live', sessionId: 'session-1',
+  changes: [{ type: 'reasoning_delta', payload: { delta: 'Considering options' } }],
 });
 ```
 
-Exports include `AGENT_EVENT_TYPES`, `AgentEventEnvelope`,
-`parseAgentEventEnvelope`, `validatePendingInteractionDto`, and `AgentWireError`.
-Envelope parsing validates the envelope structure and event identity, not the
-event-specific payload schema. Applications still own payload validation,
-authentication, authorization, and transport behavior.
+The example illustrates shape, not a persisted event. Neither parser fabricates
+identity/time, journals events or restores execution. Applications own transport,
+authentication/authorization, safe payload projection and actual acceptance/replay.
+V2 adds structural native seam validation, not a claim of full payload validation
+or native replay parity for data never accepted. All parser failures use the
+retained `AgentWireError`; versions never silently convert or fall back.
 
-Provenance: the implementation was extracted from Term2's `packages/wire`
-(source snapshot `63fbfd8a`); the frozen event-type set is pinned by test.
-
-The `0.1.x` API is preliminary.
+Provenance: v1 was extracted from Term2 snapshot63fbfd8a and is retained as
+`src/v1.ts`. V2 is authoritative shared source, not a Term2 vendored fork.

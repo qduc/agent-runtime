@@ -5,6 +5,18 @@ validates, and uploads tarballs, then a gated publish job runs direct `npm
 publish` on the validated artifacts. Nothing publishes on push, on schedule, or
 by default.
 
+## Current wire source preparation
+
+Wire source0.2.0 adds explicitly versioned schema2 while retaining schema1 and
+interaction DTOversion1; core remains0.1.0. Each wire version, compatibility and
+local-only consumer migration is documented in
+[the wire package](../packages/wire/docs/migration-v1-v2.md). Wire's package file
+list now includes `docs` as well as `dist` so those version contracts accompany a
+future artifact. The bootstrap table below describes the original0.1.0 setup,
+not a claim that0.2.0 has been built or published. No build/pack/validation or
+publication is authorized by this source-only preparation; the active M6
+implementation freeze takes precedence over the normal runbook commands.
+
 ## Exact configuration this bootstrap produced
 
 | Thing | Exact value |
