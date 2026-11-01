@@ -32,5 +32,13 @@ V2 adds structural native seam validation, not a claim of full payload validatio
 or native replay parity for data never accepted. All parser failures use the
 retained `AgentWireError`; versions never silently convert or fall back.
 
+V2 has an explicit raw-stream replay exception: raw reasoning and intermediate
+tool progress are live-only and may be lost after reconnect/crash. Recovery uses
+actual accepted summaries and final tool results, not a restored raw prefix.
+This is not full replay parity and does not authorize stripping provider-native
+reasoning items/signatures/encrypted metadata or tool calls/results. See the
+[v2 retention contract](docs/v2.md#explicit-raw-stream-replay-exception-option-b).
+Actual provider-continuation verification remains pending until after M6.
+
 Provenance: v1 was extracted from Term2 snapshot63fbfd8a and is retained as
 `src/v1.ts`. V2 is authoritative shared source, not a Term2 vendored fork.

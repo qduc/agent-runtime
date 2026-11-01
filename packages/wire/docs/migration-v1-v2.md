@@ -36,8 +36,12 @@ No release, push, deploy or registry permission follows from this document.
 ## Consumer migration unit
 
 1. Producer/native owners supply only real accepted identity/seq/at and actual
-   payloads, plus native durable publication where reasoning/progress replay is
-   required. Required replay data cannot be supplied by envelope design alone.
+   payloads. Under the explicit option-B raw-stream replay exception, raw
+   reasoning chunks and intermediate tool progress stay live-only, including
+   after reconnect/crash; accepted summaries and final tool results are the
+   recovery surface. Do not persist transient prefixes or invent history/cursors.
+   Preserve complete provider-required reasoning items/signatures/encrypted
+   metadata/tool calls/results independently of public presentation retention.
 2. Protocol/server groups ALL public changes of ONE accepted boundary into ONE
    v2 accepted envelope, preserves aggregate arrays and rotation semantics,
    keeps live envelopes separate and adds explicit format/version negotiation.
@@ -54,6 +58,9 @@ No release, push, deploy or registry permission follows from this document.
    cursors are legal; repeated individual change IDs do not exist. Live events
    do not overwrite durable state/checkpoints. Reconnect replays from last
    committed accepted boundary; reload uses actual accepted projection cuts.
+   Server/browser user-facing contracts must disclose potentially lost raw
+   reasoning/progress after reconnect/crash and recovery from accepted
+   summaries/final results, not promise full raw-stream replay parity.
 4. Browser/BFF/API/config callers migrate together: preserve caller mutation
    key/revision/patch, allow the real selection request, handle pending and
    native typed outcomes, and separate original receipt from current discovery.
@@ -72,13 +79,17 @@ No release, push, deploy or registry permission follows from this document.
 Version rejection/v1 compatibility; atomic multi-message boundary and sparse
 cursor reconnect; exact aggregate arrays/rotation without lost preserved state;
 real accepted compaction payload optionality/crash correlation/no extra charge;
-live frame non-durability and required native replayable progress; configure
+live frame non-durability, the explicit raw reasoning/progress replay exception
+and recovery from actual accepted summaries/final results; configure
 pending/success/rejected/interrupted/nonreceipt errors, original outcomes across
 later mutations, stable-key replay/conflict/stale/busy and discovery separation.
 Also establish accepted-only evidence retention, rejection of branch-wrapped
 cost/request receipts, same-request corrections without duplicate accounting,
 null/absent/empty/zero preservation and real root/branch hydration without
-invented aggregates or historical state.
+invented aggregates or historical state. Verify actual provider continuation
+through real provider paths, including complete required reasoning items,
+signatures/encrypted metadata and tool call/result round trips across supported
+reconnect/crash recovery. Public summary replay is not that evidence.
 Run package build/typecheck/tests/tarball/public-import checks and the real
 migrated server/browser workflow, including failure/reconnect paths, only when
 authorized after the freeze. None are claimed by these docs.
