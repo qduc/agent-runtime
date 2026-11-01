@@ -39,6 +39,11 @@ This is not full replay parity and does not authorize stripping provider-native
 reasoning items/signatures/encrypted metadata or tool calls/results. See the
 [v2 retention contract](docs/v2.md#explicit-raw-stream-replay-exception-option-b).
 Actual provider-continuation verification remains pending until after M6.
+Accepted tool_called retains actual call identity without asserting physical
+execution. Runtime error is live-only (accepted error rejects); a separate
+native-backed live turn_failed may settle transient visible lifecycle state,
+never an accepted cursor or durable terminal. General change types cover both
+kinds; accepted envelope changes stay restricted to accepted types.
 
 Provenance: v1 was extracted from Term2 snapshot63fbfd8a and is retained as
 `src/v1.ts`. V2 is authoritative shared source, not a Term2 vendored fork.

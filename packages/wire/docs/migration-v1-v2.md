@@ -32,6 +32,27 @@ No terminal/status, completion, provider history or missing identity is inferred
 status_changed is excluded without a native accepted producer. This does not
 alter v1/live/configure behavior, option B or enable either runtime gate.
 
+A further same-version source completion adds accepted-only `tool_called`,
+live-only `error`, and `turn_failed` to the live allowlist (the accepted failure
+name already exists). Tool payload is `{tool}` with actual called execution/
+turn/input identity and optional public call/result/display/content fields;
+never infer physical execution from a call. Error is `{error:<native public
+WireError>}`, connection-local and never accepted. The shared parser rejects
+accepted error; do not widen the accepted allowlist for type compatibility.
+`AgentAcceptedChangeTypeV2` describes that allowlist, while the general
+`AgentChangeTypeV2`/`AgentChangeV2` also represent live-only error. Accepted
+Envelope.changes is an Extract restricted to accepted types; live changes use
+their own Extract. Narrow by envelope kind and align consumers/mirrors to these
+actual APIs rather than casting a live error into accepted state.
+
+The real null-seq synchronize failure maps to live turn_failed, not a fabricated
+durable terminal. It can settle visible transient lifecycle state but never an
+accepted checkpoint/history/result. Live error alone does not mutate durable
+status/terminal. Hydration/current accepted state stays authoritative; no
+status_changed is manufactured. See the [tool/failure contract](v2.md#accepted-tool-calls-and-live-runtime-failures).
+The model_response_completed/budget_observed accepted audit gaps remain excluded
+without client behavior; no full event-replay parity is implied.
+
 ## Local artifact route — no publication required
 
 Authoritative source is agent-runtime, not a Term2 package fork. After the M6
@@ -77,6 +98,10 @@ No release, push, deploy or registry permission follows from this document.
    Apply message/draft replacements in the correct root/branch view without a
    duplicate synthetic turn. Apply exact task descriptors without treating a
    stop request or child terminal as task completion; preserve optionality.
+   Upsert accepted tool_called by real execution identity, with no inferred
+   physical start. Render live error connection-locally; a separate live
+   turn_failed may settle only transient visible lifecycle state. Neither
+   checkpoints nor creates durable terminal/history/result from live evidence.
 4. Browser/BFF/API/config callers migrate together: preserve caller mutation
    key/revision/patch, allow the real selection request, handle pending and
    native typed outcomes, and separate original receipt from current discovery.
@@ -111,6 +136,10 @@ exact payload-key rejection, optional fields/empty content/false/zero retention,
 real message branch ownership and draft replacement, root task scope and nested
 result counts without inferred completion. Separate content/origin/error
 application validation from the shared parser's bounded validation.
+Establish type/parser exclusion of accepted error, live tool_called rejection,
+exact tool/error payloads and optional JSON/null/false/zero retention. Exercise
+real accepted call -> physical start/result identity and synchronized live
+error/failure display without cursor/checkpoint or durable-terminal mutation.
 Run package build/typecheck/tests/tarball/public-import checks and the real
 migrated server/browser workflow, including failure/reconnect paths, only when
 authorized after the freeze. None are claimed by these docs.

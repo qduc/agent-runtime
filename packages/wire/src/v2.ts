@@ -37,6 +37,7 @@ export const AGENT_CHANGE_TYPES_V2 = [
   'background_notices_delivered',
   'message',
   'task_changed',
+  'tool_called',
 ] as const;
 export const AGENT_LIVE_CHANGE_TYPES_V2 = [
   'reasoning_delta',
@@ -46,9 +47,12 @@ export const AGENT_LIVE_CHANGE_TYPES_V2 = [
   'automatic_memory_notice',
   'retry',
   'retry_exhausted',
+  'error',
+  'turn_failed',
 ] as const;
-export type AgentChangeTypeV2 = (typeof AGENT_CHANGE_TYPES_V2)[number];
+export type AgentAcceptedChangeTypeV2 = (typeof AGENT_CHANGE_TYPES_V2)[number];
 export type AgentLiveChangeTypeV2 = (typeof AGENT_LIVE_CHANGE_TYPES_V2)[number];
+export type AgentChangeTypeV2 = AgentAcceptedChangeTypeV2 | AgentLiveChangeTypeV2;
 export type AgentBranchV2 = {
   readonly branchId: string;
   readonly taskId: string;
@@ -209,7 +213,7 @@ export type AgentAcceptedEnvelopeV2 = {
   readonly sessionId: string;
   readonly seq: number;
   readonly occurredAt: string;
-  readonly changes: readonly AgentChangeV2[];
+  readonly changes: readonly Extract<AgentChangeV2, { type: AgentAcceptedChangeTypeV2 }>[];
 };
 export type AgentLiveEnvelopeV2 = {
   readonly schemaVersion: 2;
@@ -254,6 +258,12 @@ export function parseAgentEventEnvelopeV2(value: unknown, expectedSessionId?: st
         invalid();
     }
     switch (change.type) {
+      case 'tool_called':
+        validateToolCall(payload);
+        break;
+      case 'error':
+        validateError(payload);
+        break;
       case 'message':
         validateMessage(payload);
         break;
@@ -290,6 +300,52 @@ export function parseAgentEventEnvelopeV2(value: unknown, expectedSessionId?: st
     }
   }
   return value as AgentEventEnvelopeV2;
+}
+
+function validateToolCall(payload: Record<string, unknown>): void {
+  exact(payload, ['tool']);
+  const tool = record(payload.tool);
+  exact(tool, ['executionId', 'turnId', 'toolName', 'input', 'status'], [
+    'parentExecutionId',
+    'callId',
+    'output',
+    'isError',
+    'progress',
+    'display',
+    'content',
+  ]);
+  for (const key of ['executionId', 'turnId']) id(tool[key]);
+  string(tool.toolName);
+  if (tool.toolName === '') invalid();
+  for (const key of ['parentExecutionId', 'callId'])
+    if (key in tool) id(tool[key]);
+  oneOf(tool.status, ['called']);
+  validateJson(tool.input);
+  for (const key of ['output', 'progress'])
+    if (key in tool) string(tool[key]);
+  if ('isError' in tool && typeof tool.isError !== 'boolean') invalid();
+  if ('display' in tool) validateJson(tool.display);
+  if ('content' in tool && !Array.isArray(tool.content)) invalid();
+}
+
+function validateError(payload: Record<string, unknown>): void {
+  exact(payload, ['error']);
+  const error = record(payload.error);
+  exact(error, ['kind', 'message'], ['retryable', 'retryAfterMs']);
+  string(error.kind);
+  string(error.message);
+  if ('retryable' in error && typeof error.retryable !== 'boolean') invalid();
+  if ('retryAfterMs' in error) number(error.retryAfterMs);
+}
+
+function validateJson(value: unknown): void {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) invalid();
+    return;
+  }
+  const values = Array.isArray(value) ? value : Object.values(record(value));
+  for (const entry of values) validateJson(entry);
 }
 
 function validateMessage(payload: Record<string, unknown>): void {
