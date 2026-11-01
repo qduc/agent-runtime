@@ -5,7 +5,7 @@
 | Package source | Event API | Configure receipt API | Interaction DTO | Consumer status |
 | --- | --- | --- | --- | --- |
 | 0.1.0 | schema1, unqualified legacy exports | none in this package | version1 | Existing consumers; direct parity gaps remain |
-| 0.2.0 | retained schema1 AND explicit named schema2 exports, including accepted cost/goal/notice evidence | explicit schema2 native configure wrapper | retained version1 | Source only; no new artifact/endpoint/browser acceptance yet |
+| 0.2.0 | retained schema1 AND explicit named schema2 exports, including accepted cost/goal/notice and message/task evidence | explicit schema2 native configure wrapper | retained version1 | Source only; no new artifact/endpoint/browser acceptance yet |
 
 Each contract: [v1](v1.md), [v2](v2.md). Package semantic version does not itself
 negotiate an event or interaction schema. The unchanged v1 parser rejects v2;
@@ -19,6 +19,18 @@ are unchanged. See [v2 accounting and scope](v2.md#accepted-cost-goals-and-notic
 root aggregate replacement and physical request upsert are distinct; neither
 cost nor request_cost_recorded is branch-wrapped. Shared payload validation
 remains structural, not a duplicate of native domain schemas.
+
+The same unreleased source also adds accepted-only `message` and `task_changed`
+with bounded validation of their exact native public payload/descriptor keys.
+Message is `{message,replacesDraftId?}` and retains actual root/branch scope,
+message identity, content/text and optional ownership/flags/draft replacement.
+Task is `{change,at,task}`; only task id/status are required descriptor fields.
+Native optional fields stay optional, and result.toolUseCounts stays nested
+(absent is unknown, [] known empty). Task metadata is root-scoped, not an extra
+branch event. See [message/task contract](v2.md#accepted-messages-and-task-descriptors).
+No terminal/status, completion, provider history or missing identity is inferred;
+status_changed is excluded without a native accepted producer. This does not
+alter v1/live/configure behavior, option B or enable either runtime gate.
 
 ## Local artifact route — no publication required
 
@@ -51,7 +63,8 @@ No release, push, deploy or registry permission follows from this document.
    requestId without another branch wrapper or duplicate charge. No aggregate
    is synthesized when a native producer is absent. Source adapters that only
    expose per-change events must be extended at the real boundary, not
-   time-window grouped.
+   time-window grouped. Retain message/task_changed raw payloads as well;
+   accepted message branch scope and root task ownership must not be invented.
 3. Browser parses v2, validates application payloads, validates the single SSE ID
    equals accepted seq, rejects an SSE ID on live frames, stages/reduces the whole
    accepted batch atomically, and commits its view/cursor together. Sparse
@@ -61,6 +74,9 @@ No release, push, deploy or registry permission follows from this document.
    Server/browser user-facing contracts must disclose potentially lost raw
    reasoning/progress after reconnect/crash and recovery from accepted
    summaries/final results, not promise full raw-stream replay parity.
+   Apply message/draft replacements in the correct root/branch view without a
+   duplicate synthetic turn. Apply exact task descriptors without treating a
+   stop request or child terminal as task completion; preserve optionality.
 4. Browser/BFF/API/config callers migrate together: preserve caller mutation
    key/revision/patch, allow the real selection request, handle pending and
    native typed outcomes, and separate original receipt from current discovery.
@@ -90,6 +106,11 @@ invented aggregates or historical state. Verify actual provider continuation
 through real provider paths, including complete required reasoning items,
 signatures/encrypted metadata and tool call/result round trips across supported
 reconnect/crash recovery. Public summary replay is not that evidence.
+Also establish accepted message/task retention after hydration and on replay,
+exact payload-key rejection, optional fields/empty content/false/zero retention,
+real message branch ownership and draft replacement, root task scope and nested
+result counts without inferred completion. Separate content/origin/error
+application validation from the shared parser's bounded validation.
 Run package build/typecheck/tests/tarball/public-import checks and the real
 migrated server/browser workflow, including failure/reconnect paths, only when
 authorized after the freeze. None are claimed by these docs.

@@ -35,6 +35,8 @@ export const AGENT_CHANGE_TYPES_V2 = [
   'notice',
   'background_notice_enqueued',
   'background_notices_delivered',
+  'message',
+  'task_changed',
 ] as const;
 export const AGENT_LIVE_CHANGE_TYPES_V2 = [
   'reasoning_delta',
@@ -252,6 +254,13 @@ export function parseAgentEventEnvelopeV2(value: unknown, expectedSessionId?: st
         invalid();
     }
     switch (change.type) {
+      case 'message':
+        validateMessage(payload);
+        break;
+      case 'task_changed':
+        if ('branch' in change) invalid();
+        validateTaskChange(payload);
+        break;
       case 'cost':
       case 'request_cost_recorded':
         // Root aggregate or physically scoped receipt: never a second branch charge.
@@ -281,6 +290,97 @@ export function parseAgentEventEnvelopeV2(value: unknown, expectedSessionId?: st
     }
   }
   return value as AgentEventEnvelopeV2;
+}
+
+function validateMessage(payload: Record<string, unknown>): void {
+  exact(payload, ['message'], ['replacesDraftId']);
+  if ('replacesDraftId' in payload) id(payload.replacesDraftId);
+  const message = record(payload.message);
+  exact(message, ['id', 'role', 'content', 'text'], [
+    'turnId',
+    'modelStep',
+    'executionId',
+    'isError',
+    'draft',
+    'replacesDraftId',
+  ]);
+  id(message.id);
+  oneOf(message.role, ['user', 'assistant', 'tool']);
+  if (!Array.isArray(message.content)) invalid();
+  string(message.text);
+  for (const key of ['turnId', 'executionId', 'replacesDraftId'])
+    if (key in message) id(message[key]);
+  if ('modelStep' in message) ordinal(message.modelStep);
+  for (const key of ['isError', 'draft'])
+    if (key in message && typeof message[key] !== 'boolean') invalid();
+}
+
+function validateTaskChange(payload: Record<string, unknown>): void {
+  exact(payload, ['change', 'at', 'task']);
+  oneOf(payload.change, ['task_started', 'task_backgrounded', 'task_stop_requested', 'task_finished']);
+  number(payload.at);
+  const task = record(payload.task);
+  exact(task, ['id', 'status'], [
+    'turnId',
+    'sessionId',
+    'parentExecutionId',
+    'sourceCallId',
+    'origin',
+    'agentId',
+    'kind',
+    'label',
+    'input',
+    'name',
+    'role',
+    'model',
+    'mode',
+    'startedAt',
+    'lastActivityAt',
+    'completedAt',
+    'text',
+    'progress',
+    'result',
+  ]);
+  id(task.id);
+  oneOf(task.status, [
+    'running',
+    'awaiting_interaction',
+    'cancelling',
+    'completed',
+    'cancelled',
+    'failed',
+    'interrupted',
+  ]);
+  for (const key of ['turnId', 'sessionId', 'parentExecutionId', 'sourceCallId', 'agentId'])
+    if (key in task) id(task[key]);
+  for (const key of ['label', 'input', 'name', 'role', 'text', 'progress'])
+    if (key in task) string(task[key]);
+  for (const key of ['startedAt', 'lastActivityAt', 'completedAt'])
+    if (key in task) number(task[key]);
+  if ('kind' in task) oneOf(task.kind, ['shell', 'subagent']);
+  if ('mode' in task) oneOf(task.mode, ['foreground', 'background']);
+  if ('model' in task) model(task.model);
+  if ('origin' in task) record(task.origin);
+  if ('result' in task) {
+    const result = record(task.result);
+    exact(result, ['kind'], ['output', 'toolUseCounts', 'error', 'reason']);
+    oneOf(result.kind, ['completed', 'cancelled', 'failed', 'interrupted']);
+    for (const key of ['output', 'reason'])
+      if (key in result) string(result[key]);
+    if ('error' in result) record(result.error);
+    if ('toolUseCounts' in result) {
+      if (!Array.isArray(result.toolUseCounts)) invalid();
+      const names = new Set<string>();
+      for (const raw of result.toolUseCounts as unknown[]) {
+        const count = record(raw);
+        exact(count, ['toolName', 'count']);
+        string(count.toolName);
+        ordinal(count.count);
+        if (count.toolName === '' || count.count === 0 || names.has(count.toolName as string)) invalid();
+        names.add(count.toolName as string);
+      }
+    }
+  }
 }
 
 function ids(value: unknown): readonly string[] {
