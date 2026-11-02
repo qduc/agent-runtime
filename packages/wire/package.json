@@ -1,6 +1,6 @@
 {
   "name": "@qduc/agent-wire",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Dependency-free agent event and interaction wire contracts",
   "license": "MIT",
   "author": "qduc",

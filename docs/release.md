@@ -7,15 +7,17 @@ by default.
 
 ## Current wire source preparation
 
-Wire source0.2.0 adds explicitly versioned schema2 while retaining schema1 and
-interaction DTOversion1; core remains0.1.0. Each wire version, compatibility and
+Wire source0.2.1 retains the schema2 APIs introduced in0.2.0, plus schema1 and
+interaction DTOversion1; core remains0.1.0. The0.2.1 patch corrects flat public
+queue-submission validation. Each wire version, compatibility and
 local-only consumer migration is documented in
 [the wire package](../packages/wire/docs/migration-v1-v2.md). Wire's package file
 list now includes `docs` as well as `dist` so those version contracts accompany a
 future artifact. The bootstrap table below describes the original0.1.0 setup,
-not a claim that0.2.0 has been built or published. No build/pack/validation or
-publication is authorized by this source-only preparation; the active M6
-implementation freeze takes precedence over the normal runbook commands.
+not a claim of0.2.1 publication or consumer acceptance. Authorized local
+build/pack verification is separate from publication: it neither runs the
+workflow nor authorizes a push, deployment or npm publish. Consumer installation
+also remains subject to the current task resource restrictions.
 
 ## Exact configuration this bootstrap produced
 

@@ -456,7 +456,7 @@ function validateQueue(value: unknown): void {
       exact(change, ['type', 'record']);
       const submitted = record(change.record);
       id(submitted.messageId);
-      record(submitted.request);
+      id(submitted.clientRequestId);
       record(submitted.admission);
       break;
     }

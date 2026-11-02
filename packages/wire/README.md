@@ -1,9 +1,10 @@
 # @qduc/agent-wire
 
 Dependency-free, ESM-only event/interaction contracts for Node.js20+.
-Package source0.2.0 adds explicit schema2 APIs while retaining schema1 and
-interaction DTOversion1. **Source delivery only:** no0.2.0 artifact or migrated
-consumer support is claimed until packaging and consumer work is complete.
+Schema2 APIs were introduced in source0.2.0 while retaining schema1 and
+interaction DTOversion1. Local source0.2.1 corrects queue-submission intake to
+validate the flat public record. Consumer installation and runtime/browser
+acceptance remain separate; no endpoint or canonical gate is activated here.
 
 ## Choose an explicit contract
 
