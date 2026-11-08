@@ -3,13 +3,12 @@
 Monorepo for standalone agent runtime and wire protocol packages.
 
 - `packages/wire` — `@qduc/agent-wire`: dependency-free event/interaction wire contracts.
-- `packages/core` — `@qduc/agent-core`: headless session runtime, provider/web-search/account registries. Implementation lives under `src/source/...`; `src/index.ts` defines the public API. Keep package-local imports valid when changing the internal layout.
 - `scripts/` — tarball smoke test (`agent-package-smoke.mjs`) and release-safety tests.
-- `docs/release.md` — publish runbook; `docs/core-migration-scope.md` — core API boundaries, retained dependencies, and implementation history.
+- `docs/release.md` — publish runbook; `docs/core-migration-scope.md` — historical core snapshot provenance.
 
 Commands: `pnpm build` · `pnpm typecheck` · `pnpm test` · `pnpm smoke` · `pnpm smoke:checkout` (needs a commit + network; validates HEAD in an isolated clone).
 
-Conventions: ESM-only, Node >=20, TypeScript strict, pnpm workspace. Packages are configured for public npm publication as `@qduc/*`, under MIT. Core ships `dist`; wire ships `dist` and its version-contract `docs`.
+Conventions: ESM-only, Node >=20, TypeScript strict, pnpm workspace. Packages are configured for public npm publication as `@qduc/*`, under MIT. Wire ships `dist` and its version-contract `docs`.
 
 Publishing is manual via `.github/workflows/publish-agent-packages.yml` (workflow_dispatch; `publish` input defaults to false, gated by GitHub environment `npm-agent-packages` and npm provenance). Never commit npm tokens; see docs/release.md before publishing.
 

@@ -24,7 +24,7 @@ function run(command, args, cwd = root) {
 
 try {
   const tarballs = [];
-  for (const name of ['wire', 'core']) {
+  for (const name of ['wire']) {
     const directory = join(root, 'packages', name);
     const manifest = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8'));
     assert.equal(manifest.name, `@qduc/agent-${name}`);
@@ -37,9 +37,6 @@ try {
     const paths = new Set(packed.files.map((file) => file.path));
     for (const path of ['README.md', 'LICENSE', manifest.exports['.'].types, manifest.exports['.'].default]) {
       assert.ok(paths.has(path.replace(/^\.\//, '')), `${manifest.name} tarball is missing ${path}`);
-    }
-    if (name === 'core') {
-      assert.ok(paths.has('dist/source/prompts/subagents/worker.md'), 'core tarball needs its prompt assets');
     }
     tarballs.push(join(temporary, packed.filename));
     console.log(`${manifest.name}@${manifest.version}: packed ${packed.files.length} files (${packed.size} bytes)`);
@@ -55,15 +52,7 @@ try {
     join(temporary, 'consumer.mjs'),
     `
 import assert from 'node:assert/strict';
-import { createSessionRuntime, createProviderRegistry, createWebSearchRegistry, createSessionAccountStore } from '@qduc/agent-core';
 import { AGENT_EVENT_TYPES, parseAgentEventEnvelope, parseAgentEventEnvelopeV2, AgentWireError } from '@qduc/agent-wire';
-assert.equal(typeof createSessionRuntime, 'function');
-const first = createProviderRegistry();
-const second = createProviderRegistry();
-first.upsertProvider({ id: 'isolated-provider' });
-assert.equal(second.getProvider('isolated-provider'), undefined);
-assert.notEqual(createWebSearchRegistry(), createWebSearchRegistry());
-assert.notEqual(createSessionAccountStore(), createSessionAccountStore());
 assert.ok(AGENT_EVENT_TYPES.includes('turn_completed'));
 const event = { schemaVersion: 1, id: 1, sessionId: 'session-1', type: 'turn_completed', occurredAt: '2026-10-03T00:00:00Z', payload: {} };
 assert.deepEqual(parseAgentEventEnvelope(event, 'session-1'), event);
@@ -100,19 +89,15 @@ for (const lastObservation of [
   { kind: 'retrying', at: 1, attempt: 1, maxRetries: 2 },
 ]) assert.doesNotThrow(() => parseAgentEventEnvelopeV2(envelope('task_question_opened', { ...task, lastObservation })));
 assert.throws(() => parseAgentEventEnvelopeV2(envelope('unknown_task_change')), AgentWireError);
-console.log('Installed tarballs: runtime imports, isolation and v2 task questions passed');
+console.log('Installed tarballs: runtime imports and v2 task questions passed');
 `,
   );
   await writeFile(
     join(temporary, 'consumer.ts'),
     `
-import { createSessionRuntime, type SessionHandle, type CreateConversationSessionOptions } from '@qduc/agent-core';
 import { parseAgentEventEnvelope, type AgentEventEnvelope } from '@qduc/agent-wire';
 const event: AgentEventEnvelope = parseAgentEventEnvelope({});
-const create: typeof createSessionRuntime = createSessionRuntime;
-export type Consumer = { handle: SessionHandle; options: CreateConversationSessionOptions };
 void event;
-void create;
 `,
   );
   console.log(run(process.execPath, ['consumer.mjs'], temporary).trim());

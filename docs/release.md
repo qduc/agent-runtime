@@ -12,14 +12,14 @@ Pushes, pull requests, and the default workflow inputs do not publish anything.
 | Repository      | `qduc/agent-runtime`                                                                                                                                 |
 | Workflow        | `publish-agent-packages.yml`, named "Prepare or publish agent packages"                                                                              |
 | Dispatch ref    | `main` (the validate job refuses other refs)                                                                                                         |
-| Inputs          | `package`: `both`, `wire`, or `core` (default `both`); `publish`: boolean (default `false`)                                                          |
-| Validation      | Frozen install, isolated checkout smoke, build, typecheck, tests, installed-tarball smoke; both packages are packed and uploaded as `agent-packages` |
+| Inputs          | `publish`: boolean (default `false`)                                                          |
+| Validation      | Frozen install, isolated checkout smoke, build, typecheck, tests, installed-tarball smoke; wire is packed and uploaded as `agent-packages` |
 | Publish gate    | `inputs.publish`, GitHub environment `npm-agent-packages`, and `id-token: write`                                                                     |
-| Publish command | Direct `npm publish` of the selected validated tarballs with `--access public --provenance`; no rebuild in the publish job                           |
+| Publish command | Direct `npm publish` of the validated wire tarball with `--access public --provenance`; no rebuild in the publish job                           |
 
-Both packages are ESM-only, MIT licensed, and require Node.js 20+. Package
-versions come from their respective manifests, independently of wire schema
-versions. Core includes `dist`; wire includes `dist` and version-contract `docs`.
+Wire is ESM-only, MIT licensed, and requires Node.js 20+. Its package
+version comes from its manifest, independently of wire schema versions. The
+tarball includes `dist` and version-contract `docs`.
 The [wire migration guide](../packages/wire/docs/migration-v1-v2.md) describes
 consumer compatibility; publishing does not migrate or activate an application.
 
@@ -44,8 +44,8 @@ Before authorizing a release, confirm:
 
 Run the workflow on `main` with `publish` left false to prepare and validate
 artifacts without publishing. Inspect the result and the `agent-packages`
-artifact. A publication run requires explicit authorization: select the package
-or packages, set `publish` true, and satisfy the environment protection rules.
+artifact. A publication run requires explicit authorization: set `publish` true
+and satisfy the environment protection rules.
 That run validates and packs its own artifacts before publication.
 
 The separate CI workflow runs validation on pushes and pull requests, without a
@@ -55,6 +55,5 @@ from a parent project. Installed-tarball smoke also checks public declarations
 without `skipLibCheck`. Both checks matter: a successful source build alone does
 not prove a clean consumer can import the package.
 
-If one package publishes and another fails, retry only the failed package. Do not
-republish a version that succeeded. Registry visibility can lag a successful
+Do not republish a version that succeeded. Registry visibility can lag a successful
 publication; an immediate 404 is not a reason to repeat it or invent a version.

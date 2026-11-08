@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "packageManager": "pnpm@11.7.0",
-  "description": "Independent agent runtime packages: headless session runtime, provider registries, and wire contracts",
+  "description": "Graduated @qduc agent ecosystem packages",
   "license": "MIT",
   "author": "qduc",
   "repository": {

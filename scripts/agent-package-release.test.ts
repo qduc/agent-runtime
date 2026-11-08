@@ -17,10 +17,10 @@ describe('agent-runtime package release safety', () => {
 
   it('publishes the validated tarballs rather than rebuilding on the publish runner', () => {
     const commands = workflow.jobs.publish.steps.flatMap((step: { run?: string }) => (step.run ? [step.run] : []));
-    expect(commands).toHaveLength(2);
+    expect(commands).toHaveLength(1);
     for (const command of commands) {
       expect(command).toMatch(
-        /^npm publish release-artifacts\/qduc-agent-(wire|core)-\*\.tgz --access public --provenance$/,
+        /^npm publish release-artifacts\/qduc-agent-wire-\*\.tgz --access public --provenance$/,
       );
     }
     expect(
@@ -37,7 +37,7 @@ describe('agent-runtime package release safety', () => {
     }
   });
 
-  for (const name of ['core', 'wire']) {
+  for (const name of ['wire']) {
     it(`makes ${name} packable with a release version and public metadata`, () => {
       const manifest = JSON.parse(readFileSync(`packages/${name}/package.json`, 'utf8'));
       expect(manifest.name).toBe(`@qduc/agent-${name}`);

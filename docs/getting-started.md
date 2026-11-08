@@ -20,7 +20,7 @@ newer source-build requirement comes from pnpm 11.7.0, which needs Node.js
 
 The packages were not publicly resolvable on npm when this guide was verified.
 Use the source-built tarball route below rather than assuming a registry release.
-The filenames shown match wire 0.2.2 and core 0.1.0; if a manifest version has
+The filenames shown match wire 0.2.3; if a manifest version has
 changed, use the filename printed by `pack`.
 
 ## 1. Build the wire package
@@ -37,7 +37,7 @@ mkdir -p release-artifacts
 pnpm --filter @qduc/agent-wire pack --pack-destination "$PWD/release-artifacts"
 ```
 
-This produces `release-artifacts/qduc-agent-wire-0.2.2.tgz`. Building and packing
+This produces `release-artifacts/qduc-agent-wire-0.2.3.tgz`. Building and packing
 are local operations, not npm publication.
 
 ## 2. Install it in a separate project
@@ -50,11 +50,11 @@ mkdir wire-demo
 cd wire-demo
 npm init -y
 npm pkg set type=module
-npm install ../agent-runtime/release-artifacts/qduc-agent-wire-0.2.2.tgz
+npm install ../agent-runtime/release-artifacts/qduc-agent-wire-0.2.3.tgz
 ```
 
 For an existing ESM project, install the same tarball using its absolute or
-relative path. Wire has no runtime dependencies and does not need core.
+relative path. Wire has no runtime dependencies.
 
 ## 3. Validate and handle events
 
@@ -162,40 +162,3 @@ See [schema v2](../packages/wire/docs/v2.md) for the complete contract and
 [v1 → v2 migration](../packages/wire/docs/migration-v1-v2.md) for compatibility.
 The unqualified `parseAgentEventEnvelope` still means v1; v1 and v2 parsers do
 not silently convert between versions.
-
-## Optional: try the core registry factories
-
-Core is for host-side building blocks, not required for the wire example. Its
-registry factories are usable, but `createSessionRuntime` cannot yet be composed
-externally through the supported public API.
-
-From `wire-demo`, build and install the core tarball:
-
-```sh
-cd ../agent-runtime
-pnpm --filter @qduc/agent-core build
-pnpm --filter @qduc/agent-core pack --pack-destination "$PWD/release-artifacts"
-cd ../wire-demo
-npm install ../agent-runtime/release-artifacts/qduc-agent-core-0.1.0.tgz
-```
-
-Core includes native dependencies; you may need platform build tools if a
-prebuilt binary is unavailable. Save the example from the
-[core README](../packages/core/README.md#install-and-try-the-registry-factories)
-as `registries.mjs` and run:
-
-```sh
-node registries.mjs
-```
-
-Expected output:
-
-```text
-Demo provider
-undefined
-account-a
-```
-
-This demonstrates independent registry membership and an in-memory account
-store, not authentication or inference. Before adopting the session runtime,
-read [its API boundaries](core-migration-scope.md).

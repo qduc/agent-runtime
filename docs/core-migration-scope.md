@@ -1,5 +1,7 @@
 # Core API boundaries and implementation notes
 
+> Historical record: the core snapshot was retired from this repository. It is not a currently supported or publishable package.
+
 `@qduc/agent-core` contains a headless session runtime, registry factories,
 account stores, and prompt assets. It is independently buildable and packaged,
 but its preliminary session-construction API still exposes internal collaborators.

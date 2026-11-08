@@ -7,10 +7,10 @@ a turn—all while a browser or terminal client disconnects and reconnects. Thos
 clients need to agree on what each event means, which changes belong together,
 and what is accepted work versus temporary progress.
 
-Agent Runtime provides TypeScript packages for that boundary. Start with
-**`@qduc/agent-wire`** for versioned event types and structural validation. The
-companion **`@qduc/agent-core`** provides registry factories and a preliminary
-headless session API.
+This repository is the home for graduated `@qduc` agent ecosystem packages.
+Today it contains **`@qduc/agent-wire`** for versioned event types and structural
+validation. A new harness core is incubating in Term2 and will move here when
+its API settles; follow [qduc/term2#224](https://github.com/qduc/term2/issues/224).
 
 ## Why use it?
 
@@ -45,10 +45,8 @@ provide that experience.
 | Package                                       | Use it for                                                              | Readiness                                                                       |
 | --------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
 | [`@qduc/agent-wire`](packages/wire/README.md) | Event/interaction types, structural parsers, and configuration receipts | Standalone contract API with retained v1 and explicit v2 support                |
-| [`@qduc/agent-core`](packages/core/README.md) | Separate provider/search registries and account stores                  | Factories are usable; external session construction still needs public-API work |
 
-Both packages are ESM-only, require Node.js 20+, and are MIT licensed. Wire is
-independent of core—you do not need the runtime package to use its contracts.
+Wire is ESM-only, requires Node.js 20+, and is MIT licensed.
 
 ## Sold? Try it in your project
 
@@ -91,8 +89,6 @@ authentication, state updates, persistence, and replay. See the
 - [Getting Started](docs/getting-started.md): install and run the examples.
 - [Wire package](packages/wire/README.md): choose a schema and understand its scope.
 - [Wire migration guide](packages/wire/docs/migration-v1-v2.md): version compatibility and consumer migration.
-- [Core package](packages/core/README.md): registry examples and session API limitations.
-- [Core API boundaries](docs/core-migration-scope.md): internal dependencies and process-wide state.
 - [Release runbook](docs/release.md): maintainers' validation and publication workflow.
 
 ## Contributing
@@ -101,9 +97,7 @@ Building the checkout requires Node.js 22.13+ and pnpm 11.7.0; Node.js 24 is
 recommended and used by CI. This is separate from the packages' declared
 Node.js 20+ runtime requirement.
 
-Public entries live at `packages/core/src/index.ts` and
-`packages/wire/src/index.ts`. Core's implementation and prompt assets live under
-`packages/core/src/source/`; those files are not a supported deep-import API.
+The public entry lives at `packages/wire/src/index.ts`.
 
 ```sh
 pnpm install --frozen-lockfile
