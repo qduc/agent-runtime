@@ -56,7 +56,7 @@ try {
     `
 import assert from 'node:assert/strict';
 import { createSessionRuntime, createProviderRegistry, createWebSearchRegistry, createSessionAccountStore } from '@qduc/agent-core';
-import { AGENT_EVENT_TYPES, parseAgentEventEnvelope, AgentWireError } from '@qduc/agent-wire';
+import { AGENT_EVENT_TYPES, parseAgentEventEnvelope, parseAgentEventEnvelopeV2, AgentWireError } from '@qduc/agent-wire';
 assert.equal(typeof createSessionRuntime, 'function');
 const first = createProviderRegistry();
 const second = createProviderRegistry();
@@ -68,7 +68,18 @@ assert.ok(AGENT_EVENT_TYPES.includes('turn_completed'));
 const event = { schemaVersion: 1, id: 1, sessionId: 'session-1', type: 'turn_completed', occurredAt: '2026-10-03T00:00:00Z', payload: {} };
 assert.deepEqual(parseAgentEventEnvelope(event, 'session-1'), event);
 assert.throws(() => parseAgentEventEnvelope(event, 'another-session'), AgentWireError);
-console.log('Installed tarballs: runtime imports and isolation passed');
+const question = { messageId: 'question:1', question: 'Which approach?' };
+const task = { id: 'child', status: 'awaiting_interaction', pendingQuestion: question };
+const envelope = (change, descriptor = task) => ({ schemaVersion: 2, kind: 'accepted', sessionId: 'session-1', seq: 2, occurredAt: event.occurredAt, changes: [{ type: 'task_changed', payload: { change, at: 1, task: descriptor } }] });
+for (const change of ['task_started', 'task_question_opened', 'task_question_closed']) {
+  const input = envelope(change, change === 'task_question_closed' ? { id: 'child', status: 'running' } : task);
+  assert.deepEqual(parseAgentEventEnvelopeV2(input), input);
+}
+for (const pendingQuestion of [null, {}, { question: 'text' }, { ...question, messageId: '' }, { ...question, question: ' ' }, { ...question, question: 1 }, { ...question, answer: 'not a public snapshot field' }]) {
+  assert.throws(() => parseAgentEventEnvelopeV2(envelope('task_question_opened', { ...task, pendingQuestion })), AgentWireError);
+}
+assert.throws(() => parseAgentEventEnvelopeV2(envelope('unknown_task_change')), AgentWireError);
+console.log('Installed tarballs: runtime imports, isolation and v2 task questions passed');
 `,
   );
   await writeFile(

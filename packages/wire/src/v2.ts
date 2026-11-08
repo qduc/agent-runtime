@@ -373,7 +373,14 @@ function validateMessage(payload: Record<string, unknown>): void {
 
 function validateTaskChange(payload: Record<string, unknown>): void {
   exact(payload, ['change', 'at', 'task']);
-  oneOf(payload.change, ['task_started', 'task_backgrounded', 'task_stop_requested', 'task_finished']);
+  oneOf(payload.change, [
+    'task_started',
+    'task_backgrounded',
+    'task_stop_requested',
+    'task_finished',
+    'task_question_opened',
+    'task_question_closed',
+  ]);
   number(payload.at);
   const task = record(payload.task);
   exact(task, ['id', 'status'], [
@@ -396,6 +403,7 @@ function validateTaskChange(payload: Record<string, unknown>): void {
     'text',
     'progress',
     'result',
+    'pendingQuestion',
   ]);
   id(task.id);
   oneOf(task.status, [
@@ -417,6 +425,13 @@ function validateTaskChange(payload: Record<string, unknown>): void {
   if ('mode' in task) oneOf(task.mode, ['foreground', 'background']);
   if ('model' in task) model(task.model);
   if ('origin' in task) record(task.origin);
+  if ('pendingQuestion' in task) {
+    const question = record(task.pendingQuestion);
+    exact(question, ['messageId', 'question']);
+    id(question.messageId);
+    string(question.question);
+    if (!(question.question as string).trim()) invalid();
+  }
   if ('result' in task) {
     const result = record(task.result);
     exact(result, ['kind'], ['output', 'toolUseCounts', 'error', 'reason']);

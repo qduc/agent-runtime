@@ -48,3 +48,8 @@ kinds; accepted envelope changes stay restricted to accepted types.
 
 Provenance: v1 was extracted from Term2 snapshot63fbfd8a and is retained as
 `src/v1.ts`. V2 is authoritative shared source, not a Term2 vendored fork.
+
+V2 task changes include native `task_question_opened`/`task_question_closed`
+and strict optional task `pendingQuestion` snapshots. Producers must preserve
+these accepted facts rather than relabeling or dropping them; see the
+[task descriptor contract](docs/v2.md#accepted-messages-and-task-descriptors).
