@@ -1,6 +1,77 @@
-# Core extraction provenance and migration scope
+# Core API boundaries and implementation notes
 
-## Source snapshot
+`@qduc/agent-core` contains a headless session runtime, registry factories,
+account stores, and prompt assets. It is independently buildable and packaged,
+but its preliminary session-construction API still exposes internal collaborators.
+The filename of this document is retained for existing links.
+
+## Public API
+
+`packages/core/src/index.ts` exports:
+
+- `createProviderRegistry`, `createWebSearchRegistry`, and
+  `createSessionAccountStore`, which create separate mutable instances.
+- `createSessionRuntime` and session types, including
+  `CreateConversationSessionOptions`, `SessionHandle`, `SessionRuntime`,
+  `SessionSnapshot`, `SessionEvent`, and interaction/admission result types.
+
+The package export map exposes only the root entry. Files under `src/source/`
+and the corresponding `dist/source/` implementation are not supported deep
+import APIs. Bundled prompt loaders resolve assets from `dist/source/prompts/`.
+
+## Session construction is not yet an external composition API
+
+`CreateConversationSessionOptions` requires `toolOwnership` of the concrete
+`ToolOwnershipRegistry` class. Options also reference collaborators such as
+`ToolApprovalPolicyRegistry`, `ToolRegistry`, and `SubagentManager`. Their class
+constructors are not exported by the package entry; some have private fields
+that prevent a structurally equivalent implementation from satisfying the type.
+
+Consequently, exporting `createSessionRuntime` does not yet let an external
+consumer compose a session through the supported public entry alone. This needs
+public-API work, not a type assertion, weakened declaration, or deep import around
+the export map. Registry factories are separately usable. The package does not
+supply a ready-made chatbot, CLI, gateway, UI, or application-level tool sandbox.
+
+## Instance isolation and process-wide state
+
+Separate registry and account-store factories do not make every part of the
+session implementation instance-local:
+
+- `source/providers/registry.ts` retains `builtinProviders` and the
+  `defaultProviderRegistry` singleton.
+- `source/services/workspace/active-workspace-root.ts` retains `activeRoot` and
+  `liveSessionRuntimeCount`; its guard refuses conflicting workspace publication
+  while multiple runtimes are live. Explicitly injected roots take precedence.
+- Session composition reaches profile/settings resolution and its caches.
+
+An application that embeds a second copy of these modules can duplicate their
+state and under-count active runtimes. Use a single implementation owner rather
+than mixing package-managed sessions with copied runtime internals. A successful
+package import or registry-isolation check is not proof of full session isolation.
+
+## Internal dependencies
+
+The session composition graph includes more than a minimal runtime kernel:
+
+- Provider service interfaces reach settings, palette, theme, and skin names.
+  This does not itself render a terminal UI.
+- Subagent role loading imports environment/instruction helpers through
+  `source/agent.ts`, which also participates in tool registration.
+- System tools include shell/sandbox behavior, filesystem and workspace
+  resolution, background task tracking, and current-directory policy.
+
+These dependencies matter when designing a narrower session API. Internal layout
+changes are possible, but should be separated from API-boundary work so ownership
+and import behavior remain reviewable.
+
+## Historical provenance
+
+The notes below describe the initial source import, not a requirement to mirror
+another repository or a statement of any application's current migration status.
+They retain the dependency-discovery and layout rationale for future maintenance.
+
+### Source snapshot
 
 - Extracted from Term2 at commit `63fbfd8a` ("Merge shared agent package release
   preparation"); the npm release preparation itself landed in `41de330f`
@@ -11,7 +82,7 @@
   `source/services/session/session-composition.ts`, `source/providers/registry.ts`,
   `source/providers/web-search/registry.ts`, `source/providers/oauth-session-account.ts`).
 
-## How the closure was computed
+### Dependency discovery
 
 `.coord/closure.mjs` (kept out of the published repo) walked the import graph
 from `packages/core/src/index.ts` using the TypeScript compiler API:
@@ -39,14 +110,13 @@ regex-based extraction. Results (snapshot `63fbfd8a`):
   `services/test-helpers/mock-stream.ts`,
   `services/session/test-helpers/conversation-session-fixtures.ts`.
 
-### The core manifest deliberately completes the dependency closure
+### Dependency declaration lessons
 
 Term2's `packages/core` manifest declared a **partial** dependency list: it
 omitted `better-sqlite3`, `ignore`, `jiti`, `ssh2`, `@qduc/web-fetch`,
 `@ai-sdk/provider`, and `@types/node-forge`, which installed anyway only because
-the Term2 root `package.json` hoisted them into the workspace. This repository
-has no root to lean on, so `packages/core/package.json` declares the full
-closure from the compiler-API import graph above.
+the Term2 root `package.json` hoisted them into the workspace. The package manifest was completed so consumers would not depend on a parent
+application's hoisted dependencies.
 
 The strict tarball smoke test (consumer installs the packed tarballs and runs
 `tsc --noEmit --strict` **without** `skipLibCheck`) is the proof that transitive
@@ -54,97 +124,11 @@ type dependencies are covered: on the first run it failed with
 `sandbox-runtime/dist/sandbox/mitm-ca.d.ts: Could not find a declaration file
 for module 'node-forge'`, and `@types/node-forge` was added to the manifest —
 matching Term2's own earlier finding (its core manifest carries
-`@types/node-forge` for exactly this reason). The test now passes.
+`@types/node-forge` for exactly this reason). The missing type dependency was added to the manifest.
 
-## Why the layout is retained
+### Layout rationale
 
-The extracted sources keep Term2's `source/...` directory layout inside
-`packages/core/src/source/` so that every relative import between extracted
-files stays byte-identical to Term2. Restructuring into per-domain folders was
-deferred until the API boundaries are re-cut on their own; doing it during the
-mechanical extraction would have mixed a mechanical copy with a refactor and
-made provenance diffing impossible.
-
-## Retained app-coupled contracts
-
-The closure is not a pure "runtime kernel"; several Term2 application contracts
-came along because the session composition graph transitively requires them:
-
-- **Settings/theme coupling.** `source/providers/registry.ts` imports
-  `services/service-interfaces.ts`, whose settings schema pulls
-  `services/settings/settings-schema.ts` → `theme/resolve-theme.ts` +
-  `theme/palettes.ts` + `skins/names.ts`. A headless consumer therefore drags
-  Term2's theme/palette/skin naming into its dependency graph (type-level;
-  no terminal rendering is performed).
-- **`source/agent.ts` coupling.** The subagent role loader imports
-  `getEnvInfo`/`getAgentsInstructions` from `source/agent.ts`, so the entry
-  module of the whole Term2 tool registration is part of the closure. It is
-  inert unless invoked, but it is duplicated application code, not a
-  package-owned seam.
-- **Prompt assets.** Profile/role prompt construction reads `.md` assets from
-  the compiled tree; these are bundled and packed.
-
-These are recorded, not silently hidden: no source in this repository was
-rewritten to decouple them in the extraction pass.
-
-## Term2 core-ownership migration is NOT done
-
-This repository being installable, buildable, testable, and packable does not
-mean Term2 has been switched to consume it. Two independent blockers remain,
-both observed in the snapshot:
-
-1. **Duplicated stateful modules.** Extracted modules own process-wide state:
-   - `source/providers/registry.ts`: module-level `builtinProviders` map and a
-     `defaultProviderRegistry` singleton created at import time.
-   - `source/services/workspace/active-workspace-root.ts`: module-level
-     `activeRoot` and `liveSessionRuntimeCount` with a fail-closed guard that
-     refuses a second published workspace root while runtimes are live.
-   - Profile/settings resolution (`services/profiles/...`) reached through the
-     session composition.
-
-   If Term2 imported `@qduc/agent-core` while keeping its own `source/` copy,
-   the process would hold **two** provider registries, **two**
-   active-workspace-root counters, and duplicated profile/settings caches. The
-   multi-runtime guard would then under-count (each copy sees only its own
-   runtimes), which is exactly the failure mode the guard exists to prevent.
-
-2. **Nominal collaborator types in the public options — and the constructors
-   are not exported.**
-   `CreateConversationSessionOptions` (the type of the public
-   `createSessionRuntime` options) names concrete classes rather than
-   structural interfaces:
-   - `toolOwnership: ToolOwnershipRegistry` (required) — a class the consumer
-     would have to instantiate from this package.
-   - Optional `approvalPolicyRegistry?: ToolApprovalPolicyRegistry`, and the
-     internals graph composes `ApprovalState` and `ToolApprovalPolicyRegistry`
-     instances internally.
-   - `agentClient: ConversationAgentClient` is an interface, but a headless
-     consumer must implement its full surface (streaming, approval policy
-     registry access, sinks) with no reference implementation exported.
-
-   Worse, the collaborator classes are internal: `src/index.ts` exports only
-   `createSessionRuntime`, the session port types, and the three registry
-   factories — no `ToolOwnershipRegistry` or related constructors — and the
-   package `exports` map exposes only the root entry, so deep imports cannot
-   reach them. The result is that `createSessionRuntime` is exported but is
-   **not yet a turnkey consumable composition API**: no external consumer can
-   currently construct valid options. Term2 gets away with it because it
-   composes from inside its own tree where the constructors are reachable.
-
-   No casts or type weakening were introduced to hide this — the limitation is
-   reported as-is. Term2's own fixtures
-   (`conversation-session-fixtures.ts`, `conversation-session-with-adapter.ts`,
-   both included under `src/source/...`) show how the collaborators are built
-   internally; they are retained as provenance and seam evidence, not as an
-   external API. De-nominalizing the option types and exporting (or replacing
-   with structural interfaces) the collaborator constructors is public-API work
-   owned separately.
-
-Consequently: the wire package is a drop-in replacement for Term2's
-`packages/wire` (its consumer was verified by the tarball smoke test), but
-migrating Term2's session runtime to consume `@qduc/agent-core` requires first
-splitting the stateful modules behind injectable seams and de-nominalizing the
-session option types (and then exporting, or structurally typing, the
-collaborator constructors). That migration is owned by the Term2 side, not by
-this repository. Release mechanics for this repository are in
-[release.md](release.md).
+The initial source import preserved the `source/...` directory layout inside
+`packages/core/src/source/` so relative imports stayed unchanged. Restructuring was deferred in that import pass: mixing a mechanical copy with
+an API/layout refactor would have made provenance diffing impossible. This
+historical choice does not require future source changes to mirror Term2.

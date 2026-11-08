@@ -1,11 +1,16 @@
-# Local migration and compatibility: v1 → v2
+# Migration and compatibility: v1 → v2
 
 ## Version ledger
 
-| Package source | Event API | Configure receipt API | Interaction DTO | Consumer status |
-| --- | --- | --- | --- | --- |
-| 0.1.0 | schema1, unqualified legacy exports | none in this package | version1 | Existing consumers; direct parity gaps remain |
-| 0.2.0 | retained schema1 AND explicit named schema2 exports, including accepted cost/goal/notice and message/task evidence | explicit schema2 native configure wrapper | retained version1 | Source only; no new artifact/endpoint/browser acceptance yet |
+| Package version | Event API                      | Configure receipt API | Interaction DTO | Change                                                                      |
+| --------------- | ------------------------------ | --------------------- | --------------- | --------------------------------------------------------------------------- |
+| 0.1.0           | Schema v1, unqualified exports | None                  | v1              | Original contract                                                           |
+| 0.2.0           | Retained v1 + explicit v2      | Explicit v2 receipts  | Retained v1     | Atomic accepted batches and separate live envelopes                         |
+| 0.2.1           | Same schema versions           | Same                  | Same            | Validate flattened queue-submission identity                                |
+| 0.2.2           | Same schema versions           | Same                  | Same            | Accept native task-question lifecycle and strict pending-question snapshots |
+
+This ledger describes package APIs, not registry visibility or application
+activation. Check installed package versions separately from transport schemas.
 
 Each contract: [v1](v1.md), [v2](v2.md). Package semantic version does not itself
 negotiate an event or interaction schema. The unchanged v1 parser rejects v2;
@@ -13,14 +18,13 @@ the new v2 parsers reject v1. There is no implicit compatibility conversion.
 
 The eight accepted-only cost/request_cost_recorded/goal/goal_proposed/
 verification/notice/background_notice_enqueued/background_notices_delivered
-names complete the same still-unreleased0.2.0/schema2 source contract, not a
-0.2.1 release. V1, the live allowlist, envelope fields and configure receipts
+names belong to the schema v2 contract. V1, the live allowlist, envelope fields and configure receipts
 are unchanged. See [v2 accounting and scope](v2.md#accepted-cost-goals-and-notices):
 root aggregate replacement and physical request upsert are distinct; neither
 cost nor request_cost_recorded is branch-wrapped. Shared payload validation
 remains structural, not a duplicate of native domain schemas.
 
-The same unreleased source also adds accepted-only `message` and `task_changed`
+Schema v2 also includes accepted-only `message` and `task_changed`
 with bounded validation of their exact native public payload/descriptor keys.
 Message is `{message,replacesDraftId?}` and retains actual root/branch scope,
 message identity, content/text and optional ownership/flags/draft replacement.
@@ -55,16 +59,13 @@ without client behavior; no full event-replay parity is implied.
 
 ## Local artifact route — no publication required
 
-Authoritative source is agent-runtime, not a Term2 package fork. After the M6
-implementation freeze lifts, the owner must build/validate/pack0.2.0 here, retain
-its exact source identity and artifact integrity, and update Term2's root and
-web-client vendored pins/lockfile together. Term2's embed step consumes the new
-installed artifact. Do not hand-edit the0.1.0 tarball, restore this shared source
-inside Term2, or require an npm publish for local development. Source delivery
-alone does not create a tarball or installable changed dependency.
-
-Build/pack/checks are explicitly DEFERRED during this implementation assignment.
-No release, push, deploy or registry permission follows from this document.
+Build and validate replacement artifacts in this repository. For local testing,
+pack the selected package and install that artifact in each affected consumer;
+retain its source identity and integrity. If a consumer embeds the installed
+package in its own build, rebuild that output too. Do not hand-edit tarballs or
+maintain copied protocol implementations in consumers. An npm publication is
+not required for local artifact testing, and source edits alone do not update
+an installed dependency. Follow the repository's release runbook for publication.
 
 ## Consumer migration unit
 
@@ -107,15 +108,15 @@ No release, push, deploy or registry permission follows from this document.
    native typed outcomes, and separate original receipt from current discovery.
    Updating a package constant, format query or success parser alone is not this
    migration. Preserve safe diagnostics and installed/profile intent semantics.
-5. Coordinate external ChatForge/BFF consumers explicitly; changing the local
-   salvaged browser does not establish external migration. Retained Term2 v1
+5. Coordinate all supported hosts, browser clients, BFFs, and other consumers
+   explicitly; changing one client does not migrate the others. Retained v1
    wire importers and interaction callers need compatibility/removal ownership;
    v1 data parsing support is not permission to run a legacy engine fallback.
 6. Keep canonical stream/configuration gates honest until producers, artifact
    and supported consumers are coherently combined and independently verified.
    This source implementation does not activate routes or prove that condition.
 
-## Evidence to collect after implementation is complete
+## Consumer acceptance evidence
 
 Version rejection/v1 compatibility; atomic multi-message boundary and sparse
 cursor reconnect; exact aggregate arrays/rotation without lost preserved state;
@@ -141,8 +142,8 @@ exact tool/error payloads and optional JSON/null/false/zero retention. Exercise
 real accepted call -> physical start/result identity and synchronized live
 error/failure display without cursor/checkpoint or durable-terminal mutation.
 Run package build/typecheck/tests/tarball/public-import checks and the real
-migrated server/browser workflow, including failure/reconnect paths, only when
-authorized after the freeze. None are claimed by these docs.
+migrated server/browser workflow, including failure/reconnect paths. Package
+validation alone does not establish that application-level acceptance.
 
 ## Rollback and storage
 

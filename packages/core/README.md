@@ -9,7 +9,7 @@ import {
   createProviderRegistry,
   createWebSearchRegistry,
   createSessionAccountStore,
-} from '@qduc/agent-core';
+} from "@qduc/agent-core";
 
 const providers = createProviderRegistry();
 const searches = createWebSearchRegistry();
@@ -26,12 +26,10 @@ See the exported `CreateConversationSessionOptions` type for the composition
 contract. Note that the options surface currently names internal collaborator
 classes (for example the required `toolOwnership` takes a class this entry does
 not export, and `exports` allows no deep imports), so the factory is not yet
-consumable outside its origin application without further public-API work.
+a supported session-construction API for external consumers without further
+public-API work. See [core API boundaries](../../docs/core-migration-scope.md)
+for required collaborators and retained process-wide state.
 Prompt assets are included in the tarball; profile and role loaders
 resolve them relative to the compiled `dist/source` tree.
-
-Provenance: the implementation was extracted from Term2's shared-package
-closure (source snapshot `63fbfd8a`) using the TypeScript compiler API to trace
-the import graph; see the repository README for the retained coupling notes.
 
 The `0.1.x` API is preliminary.
