@@ -69,15 +69,36 @@ const event = { schemaVersion: 1, id: 1, sessionId: 'session-1', type: 'turn_com
 assert.deepEqual(parseAgentEventEnvelope(event, 'session-1'), event);
 assert.throws(() => parseAgentEventEnvelope(event, 'another-session'), AgentWireError);
 const question = { messageId: 'question:1', question: 'Which approach?' };
-const task = { id: 'child', status: 'awaiting_interaction', pendingQuestion: question };
+const tracking = { lastObservation: { kind: 'question_asked', at: 1 }, lastToolName: 'ask_orchestrator', lastTool: { label: 'ask_orchestrator question', state: 'running' }, toolCounts: [{ toolName: 'ask_orchestrator', count: 1 }] };
+const task = { id: 'child', status: 'awaiting_interaction', pendingQuestion: question, ...tracking };
 const envelope = (change, descriptor = task) => ({ schemaVersion: 2, kind: 'accepted', sessionId: 'session-1', seq: 2, occurredAt: event.occurredAt, changes: [{ type: 'task_changed', payload: { change, at: 1, task: descriptor } }] });
 for (const change of ['task_started', 'task_question_opened', 'task_question_closed']) {
-  const input = envelope(change, change === 'task_question_closed' ? { id: 'child', status: 'running' } : task);
+  const input = envelope(change, change === 'task_question_closed' ? { id: 'child', status: 'running', ...tracking } : task);
   assert.deepEqual(parseAgentEventEnvelopeV2(input), input);
 }
 for (const pendingQuestion of [null, {}, { question: 'text' }, { ...question, messageId: '' }, { ...question, question: ' ' }, { ...question, question: 1 }, { ...question, answer: 'not a public snapshot field' }]) {
   assert.throws(() => parseAgentEventEnvelopeV2(envelope('task_question_opened', { ...task, pendingQuestion })), AgentWireError);
 }
+for (const malformed of [
+  { lastTool: { label: 'x', state: 'complete' } },
+  { lastTool: { label: 'x', state: 'running', private: true } },
+  { lastToolName: '' },
+  { lastObservation: { kind: 'unknown', at: 1 } },
+  { lastObservation: { kind: 'tool_started', at: 1 } },
+  { lastObservation: { kind: 'retrying', at: 1, attempt: -1, maxRetries: 2 } },
+  { lastObservation: { kind: 'question_asked', at: 1, private: true } },
+  { toolCounts: [{ toolName: 'ask_orchestrator', count: 0 }] },
+  { toolCounts: [{ toolName: 'ask_orchestrator', count: 1.5 }] },
+  { toolCounts: [{ toolName: 'ask_orchestrator', count: 1 }, { toolName: 'ask_orchestrator', count: 2 }] },
+]) assert.throws(() => parseAgentEventEnvelopeV2(envelope('task_question_opened', { ...task, ...malformed })), AgentWireError);
+for (const lastObservation of [
+  ...['request_dispatched', 'response_started', 'text_received', 'approval_requested', 'question_asked', 'shell_started', 'shell_output_received', 'stop_requested', 'settled'].map(kind => ({ kind, at: 1 })),
+  { kind: 'tool_input_received', at: 1, toolName: 'ask_orchestrator', argumentCharCount: 20 },
+  { kind: 'tool_started', at: 1, toolName: 'ask_orchestrator' },
+  { kind: 'tool_completed', at: 1 },
+  { kind: 'tool_completed', at: 1, toolName: 'ask_orchestrator' },
+  { kind: 'retrying', at: 1, attempt: 1, maxRetries: 2 },
+]) assert.doesNotThrow(() => parseAgentEventEnvelopeV2(envelope('task_question_opened', { ...task, lastObservation })));
 assert.throws(() => parseAgentEventEnvelopeV2(envelope('unknown_task_change')), AgentWireError);
 console.log('Installed tarballs: runtime imports, isolation and v2 task questions passed');
 `,
