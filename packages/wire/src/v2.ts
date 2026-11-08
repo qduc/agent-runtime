@@ -404,6 +404,10 @@ function validateTaskChange(payload: Record<string, unknown>): void {
     'progress',
     'result',
     'pendingQuestion',
+    'lastTool',
+    'lastToolName',
+    'toolCounts',
+    'lastObservation',
   ]);
   id(task.id);
   oneOf(task.status, [
@@ -425,6 +429,29 @@ function validateTaskChange(payload: Record<string, unknown>): void {
   if ('mode' in task) oneOf(task.mode, ['foreground', 'background']);
   if ('model' in task) model(task.model);
   if ('origin' in task) record(task.origin);
+  if ('lastObservation' in task) validateTaskObservation(task.lastObservation);
+  if ('lastToolName' in task) {
+    string(task.lastToolName);
+    if (task.lastToolName === '') invalid();
+  }
+  if ('lastTool' in task) {
+    const tool = record(task.lastTool);
+    exact(tool, ['label', 'state']);
+    string(tool.label);
+    oneOf(tool.state, ['running', 'success', 'failed']);
+  }
+  if ('toolCounts' in task) {
+    if (!Array.isArray(task.toolCounts)) invalid();
+    const names = new Set<string>();
+    for (const raw of task.toolCounts as unknown[]) {
+      const count = record(raw);
+      exact(count, ['toolName', 'count']);
+      string(count.toolName);
+      ordinal(count.count);
+      if (count.toolName === '' || count.count === 0 || names.has(count.toolName as string)) invalid();
+      names.add(count.toolName as string);
+    }
+  }
   if ('pendingQuestion' in task) {
     const question = record(task.pendingQuestion);
     exact(question, ['messageId', 'question']);
@@ -451,6 +478,36 @@ function validateTaskChange(payload: Record<string, unknown>): void {
         names.add(count.toolName as string);
       }
     }
+  }
+}
+
+function validateTaskObservation(value: unknown): void {
+  const observation = record(value);
+  number(observation.at);
+  switch (observation.kind) {
+    case 'tool_input_received':
+      exact(observation, ['kind', 'at', 'toolName', 'argumentCharCount']);
+      string(observation.toolName);
+      ordinal(observation.argumentCharCount);
+      break;
+    case 'tool_started':
+      exact(observation, ['kind', 'at', 'toolName']);
+      string(observation.toolName);
+      break;
+    case 'tool_completed':
+      exact(observation, ['kind', 'at'], ['toolName']);
+      if ('toolName' in observation) string(observation.toolName);
+      break;
+    case 'retrying':
+      exact(observation, ['kind', 'at', 'attempt', 'maxRetries']);
+      ordinal(observation.attempt);
+      ordinal(observation.maxRetries);
+      break;
+    default:
+      exact(observation, ['kind', 'at']);
+      oneOf(observation.kind, ['request_dispatched', 'response_started', 'text_received',
+        'approval_requested', 'question_asked', 'shell_started', 'shell_output_received',
+        'stop_requested', 'settled']);
   }
 }
 
