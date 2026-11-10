@@ -67,17 +67,20 @@ constructors let adapters supply live recovery evidence without losing class
 identity across the package boundary. Engine driver classes and compaction
 implementation helpers remain private.
 
-## Workspace and distribution
+## Distribution and verification
 
-The package incubates in this workspace (directory `packages/agent-harness-core/`)
-and is embedded in Term2's distribution. Prereleases go to npm under the `next`
-dist-tag (`publishConfig` sets it), so `npm install @qduc/agent-core` without a
-version or tag installs nothing until a stable release exists; consumers pin an
-exact prerelease version. `0.1.0` was used by an earlier, unpublished snapshot
-and cannot be republished. `pnpm build:core` builds its JavaScript and
-self-contained declarations; `pnpm build` builds it before Term2 and embeds it
-under `dist/node_modules`. Build receipts cover package source and configuration. `pnpm dev` watches both
-the package and Term2, so edits to package contracts rebuild their consumer.
+Prereleases go to npm under the `next` dist-tag, so `npm install @qduc/agent-core`
+without a version or tag installs nothing until a stable release exists; consumers
+pin an exact prerelease version. `0.1.0` was used by an earlier, unpublished
+snapshot and cannot be republished. `pnpm --filter @qduc/agent-core build` emits
+JavaScript and declarations to `dist/`.
+
+The repository's installed-tarball smoke (`scripts/agent-package-smoke.mjs`) packs
+the package, installs it into a plain project and runs two concurrent turns with
+distinct settings and application contexts through the public entry point, then
+type-checks a consumer without `skipLibCheck`. `scripts/core-import-boundary.test.ts`
+keeps the source free of imports other than Node built-ins and its own files.
+Term2, the first consumer, exercises it in its integration and e2e tiers.
 Watch mode uses the Node-based compiler because native fanotify watching is not
 available on every workspace filesystem.
 

@@ -9,9 +9,9 @@ and what is accepted work versus temporary progress.
 
 This repository is the home for graduated `@qduc` agent ecosystem packages.
 It contains **`@qduc/agent-wire`** for versioned event types and structural
-validation, and **`@qduc/agent-core`**, the application-owned turn harness
-developed in Term2 ([qduc/term2#224](https://github.com/qduc/term2/issues/224)),
-published here as a prerelease on the `next` dist-tag.
+validation, and **`@qduc/agent-core`**, the application-owned turn harness that graduated
+from Term2 ([qduc/term2#224](https://github.com/qduc/term2/issues/224)),
+published as a prerelease on the `next` dist-tag.
 
 ## Why use it?
 

@@ -18,10 +18,11 @@ Pushes, pull requests, and the default workflow inputs do not publish anything.
 | Publish command | Direct `npm publish` of the selected validated tarballs with `--access public --provenance` (core adds `--tag next`); no rebuild in the publish job |
 
 Core is a prerelease and is always published to the `next` dist-tag, so
-`npm install @qduc/agent-core` without a tag does not pick it up. Its source is
-developed in Term2 (`packages/agent-harness-core`); before a core release, copy
-that `src/` and `README.md` here and bump the version in the same change. Core
-requires Node.js 24+; the installed-tarball smoke runs two concurrent turns.
+`npm install @qduc/agent-core` without a tag does not pick it up. Its source
+lives here; Term2 vendors packed tarballs (`pnpm --filter @qduc/agent-core pack`)
+until it switches to the registry, so bump the version for any change a consumer
+will vendor. Core requires Node.js 24+; the installed-tarball smoke runs two
+concurrent turns.
 
 Wire is ESM-only, MIT licensed, and requires Node.js 20+. Its package
 version comes from its manifest, independently of wire schema versions. The

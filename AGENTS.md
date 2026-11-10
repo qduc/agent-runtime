@@ -3,8 +3,9 @@
 Monorepo for standalone agent runtime and wire protocol packages.
 
 - `packages/wire` — `@qduc/agent-wire`: dependency-free event/interaction wire contracts.
-- `packages/core` — `@qduc/agent-core`: dependency-free turn harness (`startTurn`). Developed in
-  Term2 `packages/agent-harness-core`; copy the source here for a release. Prerelease, `next` tag, Node 24+.
+- `packages/core` — `@qduc/agent-core`: dependency-free turn harness (`startTurn`), graduated from
+  Term2. Source of truth is here; Term2 vendors released tarballs. Prerelease, `next` tag, Node 24+.
+  `scripts/core-import-boundary.test.ts` keeps it free of non-built-in imports.
 - `scripts/` — tarball smoke test (`agent-package-smoke.mjs`) and release-safety tests.
 - `docs/release.md` — publish runbook; `docs/core-migration-scope.md` — historical core snapshot provenance.
 
