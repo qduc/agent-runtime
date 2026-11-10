@@ -74,8 +74,8 @@ jobs:
           path: release-artifacts
       - name: Publish wire
         if: inputs.package == 'wire' || inputs.package == 'both'
-        run: npm publish release-artifacts/qduc-agent-wire-*.tgz --access public --provenance
+        run: npm publish ./release-artifacts/qduc-agent-wire-*.tgz --access public --provenance
       # Core is a prerelease: it goes to the `next` dist-tag, never `latest`.
       - name: Publish core
         if: inputs.package == 'core' || inputs.package == 'both'
-        run: npm publish release-artifacts/qduc-agent-core-*.tgz --access public --provenance --tag next
+        run: npm publish ./release-artifacts/qduc-agent-core-*.tgz --access public --provenance --tag next
