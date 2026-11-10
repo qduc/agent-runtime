@@ -3,6 +3,14 @@ name: Prepare or publish agent packages
 on:
   workflow_dispatch:
     inputs:
+      package:
+        description: Package to publish after validation
+        type: choice
+        options:
+          - wire
+          - core
+          - both
+        default: wire
       publish:
         description: Publish to npm (requires npm Trusted Publisher setup)
         type: boolean
@@ -40,6 +48,7 @@ jobs:
         run: |
           mkdir -p release-artifacts
           pnpm --filter @qduc/agent-wire pack --pack-destination "$PWD/release-artifacts"
+          pnpm --filter @qduc/agent-core pack --pack-destination "$PWD/release-artifacts"
       - uses: actions/upload-artifact@v7
         with:
           name: agent-packages
@@ -64,4 +73,9 @@ jobs:
           name: agent-packages
           path: release-artifacts
       - name: Publish wire
+        if: inputs.package == 'wire' || inputs.package == 'both'
         run: npm publish release-artifacts/qduc-agent-wire-*.tgz --access public --provenance
+      # Core is a prerelease: it goes to the `next` dist-tag, never `latest`.
+      - name: Publish core
+        if: inputs.package == 'core' || inputs.package == 'both'
+        run: npm publish release-artifacts/qduc-agent-core-*.tgz --access public --provenance --tag next

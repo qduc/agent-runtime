@@ -24,7 +24,7 @@ function run(command, args, cwd = root) {
 
 try {
   const tarballs = [];
-  for (const name of ['wire']) {
+  for (const name of ['wire', 'core']) {
     const directory = join(root, 'packages', name);
     const manifest = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8'));
     assert.equal(manifest.name, `@qduc/agent-${name}`);
@@ -98,9 +98,88 @@ console.log('Installed tarballs: runtime imports and v2 task questions passed');
 import { parseAgentEventEnvelope, type AgentEventEnvelope } from '@qduc/agent-wire';
 const event: AgentEventEnvelope = parseAgentEventEnvelope({});
 void event;
+import { startTurn, type TurnSpec } from '@qduc/agent-core';
+const spec: TurnSpec = { turnId: 't' as TurnSpec['turnId'], history: [], newItems: [], instructions: '', model: { provider: 'p', model: 'm' }, tools: [] };
+void startTurn;
+void spec;
 `,
   );
   console.log(run(process.execPath, ['consumer.mjs'], temporary).trim());
+  await writeFile(join(temporary, 'core-consumer.mjs'), String.raw`
+import assert from 'node:assert/strict';
+import { startTurn } from '@qduc/agent-core';
+
+let entered = 0;
+let release;
+const overlapping = new Promise((resolve) => { release = resolve; });
+const observations = [];
+async function runTurn(userId, temperature) {
+  const app = { userId, settings: { temperature } };
+  let calls = 0;
+  const tool = {
+    spec: { name: 'whoami', description: 'Return the current user', inputSchema: { type: 'object' } },
+    parse: (raw) => raw,
+    approval: () => ({ kind: 'none' }),
+    async execute(input, ctx) {
+      assert.equal(input.userId, userId);
+      assert.equal(ctx.app, app);
+      assert.equal(ctx.app.settings.temperature, temperature);
+      ctx.progress(userId);
+      observations.push(ctx.app.userId);
+      return { output: ctx.app.userId, isError: false };
+    },
+  };
+  const model = {
+    ref: { provider: 'fake', model: 'fake' },
+    contextWindow: 128000,
+    async *stream(request, signal, onDispatched) {
+      assert.equal(request.temperature, temperature);
+      assert.deepEqual(request.affinity, { conversationKey: userId, cacheKey: userId + '-cache', routingKey: userId + '-route' });
+      assert.equal(request.providerOptions.userId, userId);
+      assert.equal(signal.aborted, false);
+      onDispatched?.();
+      if (calls++ === 0) {
+        if (++entered === 2) release();
+        await overlapping;
+        yield { type: 'item', item: {
+          type: 'tool_call', id: userId + '-call', callId: userId + '-call',
+          toolName: 'whoami', input: { userId },
+        } };
+        yield { type: 'done', stopReason: 'tool_use' };
+      } else {
+        const result = request.input.find((item) => item.type === 'tool_result');
+        assert.equal(result.output, userId);
+        yield { type: 'item', item: {
+          type: 'assistant_message', id: userId + '-answer', content: [{ type: 'text', text: userId }],
+        } };
+        yield { type: 'done', stopReason: 'end_turn' };
+      }
+    },
+  };
+  const handle = startTurn({
+    turnId: userId, history: [], newItems: [], instructions: 'Identify the user',
+    affinity: { conversationKey: userId, cacheKey: userId + '-cache', routingKey: userId + '-route' },
+    model: { provider: 'fake', model: 'fake' }, tools: [tool.spec],
+    temperature, limits: { maxModelCalls: 2, maxToolCalls: 1 },
+  }, {
+    models: { resolve: () => model, list: () => [] },
+    tools: { get: (name) => name === 'whoami' ? tool : undefined, available: () => [tool] },
+    toolContext: app,
+    prepareRequest: (request) => ({ request: { ...request, providerOptions: { userId } } }),
+  });
+  let outcome;
+  for await (const { event, token } of handle.events) {
+    if (event.type === 'turn_ended') outcome = event.result;
+    handle.accept(token);
+  }
+  assert.equal(outcome.kind, 'completed');
+  assert.equal(calls, 2);
+}
+await Promise.all([runTurn('alice', 0.1), runTurn('bob', 0.9)]);
+assert.deepEqual(observations.sort(), ['alice', 'bob']);
+console.log('Installed tarballs: two concurrent core turns completed in isolation');
+`);
+  console.log(run(process.execPath, ['core-consumer.mjs'], temporary).trim());
   run(
     join(root, 'node_modules', '.bin', 'tsc'),
     [

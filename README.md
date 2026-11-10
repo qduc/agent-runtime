@@ -8,9 +8,10 @@ clients need to agree on what each event means, which changes belong together,
 and what is accepted work versus temporary progress.
 
 This repository is the home for graduated `@qduc` agent ecosystem packages.
-Today it contains **`@qduc/agent-wire`** for versioned event types and structural
-validation. A new harness core is incubating in Term2 and will move here when
-its API settles; follow [qduc/term2#224](https://github.com/qduc/term2/issues/224).
+It contains **`@qduc/agent-wire`** for versioned event types and structural
+validation, and **`@qduc/agent-core`**, the application-owned turn harness that graduated
+from Term2 ([qduc/term2#224](https://github.com/qduc/term2/issues/224)),
+published as a prerelease on the `next` dist-tag.
 
 ## Why use it?
 
@@ -45,8 +46,9 @@ provide that experience.
 | Package                                       | Use it for                                                              | Readiness                                                                       |
 | --------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
 | [`@qduc/agent-wire`](packages/wire/README.md) | Event/interaction types, structural parsers, and configuration receipts | Standalone contract API with retained v1 and explicit v2 support                |
+| [`@qduc/agent-core`](packages/core/README.md) | Running a model/tool turn with host-owned history, providers and tools  | Prerelease (`next`); API may change before 1.0; requires Node.js 24+           |
 
-Wire is ESM-only, requires Node.js 20+, and is MIT licensed.
+Both are ESM-only and MIT licensed. Wire requires Node.js 20+; core requires Node.js 24+.
 
 ## Sold? Try it in your project
 
@@ -97,7 +99,7 @@ Building the checkout requires Node.js 22.13+ and pnpm 11.7.0; Node.js 24 is
 recommended and used by CI. This is separate from the packages' declared
 Node.js 20+ runtime requirement.
 
-The public entry lives at `packages/wire/src/index.ts`.
+Public entries live at `packages/wire/src/index.ts` and `packages/core/src/index.ts`.
 
 ```sh
 pnpm install --frozen-lockfile

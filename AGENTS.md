@@ -3,12 +3,15 @@
 Monorepo for standalone agent runtime and wire protocol packages.
 
 - `packages/wire` — `@qduc/agent-wire`: dependency-free event/interaction wire contracts.
+- `packages/core` — `@qduc/agent-core`: dependency-free turn harness (`startTurn`), graduated from
+  Term2. Source of truth is here; Term2 vendors released tarballs. Prerelease, `next` tag, Node 24+.
+  `scripts/core-import-boundary.test.ts` keeps it free of non-built-in imports.
 - `scripts/` — tarball smoke test (`agent-package-smoke.mjs`) and release-safety tests.
 - `docs/release.md` — publish runbook; `docs/core-migration-scope.md` — historical core snapshot provenance.
 
 Commands: `pnpm build` · `pnpm typecheck` · `pnpm test` · `pnpm smoke` · `pnpm smoke:checkout` (needs a commit + network; validates HEAD in an isolated clone).
 
-Conventions: ESM-only, Node >=20, TypeScript strict, pnpm workspace. Packages are configured for public npm publication as `@qduc/*`, under MIT. Wire ships `dist` and its version-contract `docs`.
+Conventions: ESM-only, Node >=20, TypeScript strict, pnpm workspace. Packages are configured for public npm publication as `@qduc/*`, under MIT. Wire ships `dist` and its version-contract `docs`; core ships `dist`.
 
 Publishing is manual via `.github/workflows/publish-agent-packages.yml` (workflow_dispatch; `publish` input defaults to false, gated by GitHub environment `npm-agent-packages` and npm provenance). Never commit npm tokens; see docs/release.md before publishing.
 
@@ -24,6 +27,7 @@ than creating boilerplate for every small file or helper. When a cross-owner
 interface changes, report the required downstream documentation and its owner;
 do not silently claim that another owner's contract is updated.
 
+For `packages/core`, the public-interface document is its `README.md`.
 For `packages/wire`, the existing public-interface documents are its `README.md`
 and `docs/v1.md`, `docs/v2.md`, and `docs/migration-v1-v2.md`. Keep the retained
 version contracts, native/application responsibilities and evidence limits current.
