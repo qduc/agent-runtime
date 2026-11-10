@@ -17,17 +17,36 @@ describe('agent-runtime package release safety', () => {
 
   it('publishes the validated tarballs rather than rebuilding on the publish runner', () => {
     const commands = workflow.jobs.publish.steps.flatMap((step: { run?: string }) => (step.run ? [step.run] : []));
-    expect(commands).toHaveLength(1);
-    for (const command of commands) {
-      expect(command).toMatch(
-        /^npm publish release-artifacts\/qduc-agent-wire-\*\.tgz --access public --provenance$/,
-      );
-    }
+    expect(commands).toEqual([
+      'npm publish release-artifacts/qduc-agent-wire-*.tgz --access public --provenance',
+      'npm publish release-artifacts/qduc-agent-core-*.tgz --access public --provenance --tag next',
+    ]);
     expect(
       workflow.jobs.validate.steps.some(
         (step: { run?: string }) => step.run === 'node scripts/agent-package-smoke.mjs',
       ),
     ).toBe(true);
+  });
+
+  it('publishes only the package selected on dispatch, defaulting to wire alone', () => {
+    const input = workflow.on.workflow_dispatch.inputs.package;
+    expect(input.default).toBe('wire');
+    expect(input.options).toEqual(['wire', 'core', 'both']);
+    const conditions = Object.fromEntries(
+      workflow.jobs.publish.steps
+        .filter((step: { run?: string }) => step.run)
+        .map((step: { name: string; if: string }) => [step.name, step.if]),
+    );
+    expect(conditions).toEqual({
+      'Publish wire': "inputs.package == 'wire' || inputs.package == 'both'",
+      'Publish core': "inputs.package == 'core' || inputs.package == 'both'",
+    });
+  });
+
+  it('keeps core prereleases off the latest dist-tag', () => {
+    const manifest = JSON.parse(readFileSync('packages/core/package.json', 'utf8'));
+    expect(manifest.version).toMatch(/-/);
+    expect(manifest.publishConfig.tag).toBe('next');
   });
 
   it('keeps Term2-wide validation out of this repository', () => {
@@ -37,7 +56,7 @@ describe('agent-runtime package release safety', () => {
     }
   });
 
-  for (const name of ['wire']) {
+  for (const name of ['wire', 'core']) {
     it(`makes ${name} packable with a release version and public metadata`, () => {
       const manifest = JSON.parse(readFileSync(`packages/${name}/package.json`, 'utf8'));
       expect(manifest.name).toBe(`@qduc/agent-${name}`);

@@ -1,6 +1,8 @@
 # Core API boundaries and implementation notes
 
-> Historical record: the core snapshot was retired from this repository. It is not a currently supported or publishable package.
+> Historical record: the core snapshot was retired from this repository. The current
+> `packages/core` is a different package that reuses the name: Term2's turn harness
+> (`startTurn`), not this session runtime. Nothing below describes it.
 
 `@qduc/agent-core` contains a headless session runtime, registry factories,
 account stores, and prompt assets. It is independently buildable and packaged,
