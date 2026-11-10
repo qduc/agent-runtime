@@ -18,8 +18,8 @@ describe('agent-runtime package release safety', () => {
   it('publishes the validated tarballs rather than rebuilding on the publish runner', () => {
     const commands = workflow.jobs.publish.steps.flatMap((step: { run?: string }) => (step.run ? [step.run] : []));
     expect(commands).toEqual([
-      'npm publish release-artifacts/qduc-agent-wire-*.tgz --access public --provenance',
-      'npm publish release-artifacts/qduc-agent-core-*.tgz --access public --provenance --tag next',
+      'npm publish ./release-artifacts/qduc-agent-wire-*.tgz --access public --provenance',
+      'npm publish ./release-artifacts/qduc-agent-core-*.tgz --access public --provenance --tag next',
     ]);
     expect(
       workflow.jobs.validate.steps.some(
