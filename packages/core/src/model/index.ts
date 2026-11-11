@@ -148,9 +148,13 @@ export type ModelRequest = {
 };
 
 export type Usage = {
+  /** Total input including cache reads and cache writes. */
   readonly inputTokens: number;
   readonly outputTokens: number;
   readonly cachedInputTokens: number;
+  readonly cacheWriteTokens?: number;
+  /** Subset of cacheWriteTokens created with a one-hour TTL. */
+  readonly cacheWrite1hTokens?: number;
   /** The provider an aggregator routed this request to (OpenRouter's `provider`), when it reports one. */
   readonly upstreamProvider?: string;
 };
