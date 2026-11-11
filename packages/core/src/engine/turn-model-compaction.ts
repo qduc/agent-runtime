@@ -148,6 +148,7 @@ export class TurnCompaction<AppCtx = unknown> {
       const result = await compactDirectHistory({
         ...this.deps.compaction,
         contextWindow: this.deps.compaction.contextWindow ?? model.catalogContextWindow,
+        assumedContextWindow: model.contextWindow,
         request,
         model: summaryModel,
         signal: this.signal,
