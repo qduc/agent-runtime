@@ -317,7 +317,7 @@ export class TurnCompaction<AppCtx = unknown> {
         requestId,
         modelStep: prepared.modelStep,
         model: prepared.request.model,
-        // The persisted record holds the three counters only (log-facts validates them exactly); the upstream
+        // Preserve optional billable cache dimensions too; the upstream
         // provider OpenRouter usage carries belongs to the status bar, not to the compaction record.
         ...(usage !== undefined
           ? {
@@ -325,6 +325,8 @@ export class TurnCompaction<AppCtx = unknown> {
                 inputTokens: usage.inputTokens,
                 outputTokens: usage.outputTokens,
                 cachedInputTokens: usage.cachedInputTokens,
+                ...(usage.cacheWriteTokens !== undefined ? { cacheWriteTokens: usage.cacheWriteTokens } : {}),
+                ...(usage.cacheWrite1hTokens !== undefined ? { cacheWrite1hTokens: usage.cacheWrite1hTokens } : {}),
               },
             }
           : {}),

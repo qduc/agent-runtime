@@ -8,8 +8,8 @@
  *
  * Costs are accumulated and persisted as integer USD micros (1/1_000_000 of a
  * USD). Provider decimal charges are converted without binary floating-point
- * arithmetic; each model request is rounded exactly once, then integers are
- * added.
+ * arithmetic. Catalog estimates round each billable dimension to micros;
+ * request and session records add those integers.
  */
 /**
  * Provider-neutral model-request cost accounting.
@@ -21,8 +21,8 @@
  *
  * Costs are accumulated and persisted as integer USD micros (1/1_000_000 of a
  * USD). Provider decimal charges are converted without binary floating-point
- * arithmetic; each model request is rounded exactly once, then integers are
- * added.
+ * arithmetic. Catalog estimates round each billable dimension to micros;
+ * request and session records add those integers.
  */
 import type { NormalizedUsage } from '../utils/ai/token-usage.js';
 
@@ -91,6 +91,12 @@ export interface CatalogPrice {
   cacheReadPerMTok?: number;
   /** Cache-write/creation rate when the provider charges cache creation separately. */
   cacheWritePerMTok?: number;
+  /** Explicit one-hour cache creation price; absent with reported long writes is unpriced. */
+  cacheWrite1hPerMTok?: number;
+  /** Entire-request rates above a full-input threshold, including all cache tokens. */
+  tiers?: readonly (Omit<CatalogPrice, 'tiers'> & {
+    inputTokensAbove: number;
+  })[];
 }
 
 /**
@@ -102,9 +108,25 @@ export function isValidCatalogPrice(price: Partial<CatalogPrice>): price is Cata
   return (
     price.inputPerMTok !== undefined &&
     price.outputPerMTok !== undefined &&
-    [price.inputPerMTok, price.outputPerMTok, price.cacheReadPerMTok, price.cacheWritePerMTok].every(
-      (rate) => rate === undefined || (Number.isFinite(rate) && rate >= 0),
-    )
+    [
+      price.inputPerMTok,
+      price.outputPerMTok,
+      price.cacheReadPerMTok,
+      price.cacheWritePerMTok,
+      price.cacheWrite1hPerMTok,
+    ].every((rate) => rate === undefined || (Number.isFinite(rate) && rate >= 0)) &&
+    (price.tiers === undefined ||
+      (Array.isArray(price.tiers) &&
+        price.tiers.every(
+          (tier) =>
+            tier !== null &&
+            typeof tier === 'object' &&
+            Number.isFinite(tier.inputTokensAbove) &&
+            tier.inputTokensAbove >= 0 &&
+            !('tiers' in tier) &&
+            isValidCatalogPrice(tier),
+        ) &&
+        new Set(price.tiers.map((tier) => tier.inputTokensAbove)).size === price.tiers.length))
   );
 }
 
@@ -123,7 +145,10 @@ export type PricingLookupResult =
        */
       pricedFromProvider?: string;
     }
-  | { found: false; reason: Extract<UnpricedReason, 'unknown_provider' | 'unknown_model' | 'unknown_tier'> };
+  | {
+      found: false;
+      reason: Extract<UnpricedReason, 'unknown_provider' | 'unknown_model' | 'unknown_tier'>;
+    };
 
 export interface ModelCostInput {
   requestId: string;
@@ -190,6 +215,7 @@ export interface BillableTokens {
   uncachedInputTokens: number;
   cachedInputTokens: number;
   cacheWriteTokens: number;
+  cacheWrite1hTokens?: number;
   outputTokens: number;
 }
 
@@ -212,6 +238,15 @@ export function resolveBillableTokens(usage: NormalizedUsage | null | undefined)
 
   const cachedInputTokens = usage.cache_read_tokens ?? 0;
   const cacheWriteTokens = usage.cache_creation_tokens ?? 0;
+  const cacheWrite1hTokens = usage.cache_creation_1h_tokens ?? 0;
+  if (
+    [usage.prompt_tokens, usage.completion_tokens, cachedInputTokens, cacheWriteTokens, cacheWrite1hTokens].some(
+      (value) => value !== undefined && (!Number.isFinite(value) || value < 0),
+    ) ||
+    cacheWrite1hTokens > cacheWriteTokens ||
+    (usage.prompt_tokens != null && cachedInputTokens > usage.prompt_tokens)
+  )
+    return 'ambiguous';
   // The uncached share requires the provider to report the full prompt input.
   const uncachedInputTokens =
     usage.prompt_tokens != null ? Math.max(0, usage.prompt_tokens - cachedInputTokens) : undefined;
@@ -219,7 +254,13 @@ export function resolveBillableTokens(usage: NormalizedUsage | null | undefined)
 
   if (uncachedInputTokens === undefined || outputTokens === undefined) return 'ambiguous';
 
-  return { uncachedInputTokens, cachedInputTokens, cacheWriteTokens, outputTokens };
+  return {
+    uncachedInputTokens,
+    cachedInputTokens,
+    cacheWriteTokens,
+    ...(usage.cache_creation_1h_tokens !== undefined ? { cacheWrite1hTokens } : {}),
+    outputTokens,
+  };
 }
 
 function toMicros(dollarsPerMTok: number, tokens: number): number {
@@ -258,17 +299,31 @@ export function computeModelCost(input: ModelCostInput): ModelRequestCost {
   const lookup = input.getPrice(input.provider, input.model, input.serviceTier);
   if (!lookup.found) return { ...base, unpricedReason: lookup.reason };
 
-  const { price } = lookup;
+  let { price } = lookup;
   if (!isValidCatalogPrice(price)) return { ...base, unpricedReason: 'unknown_model' };
+  const fullInputTokens = tokens.uncachedInputTokens + tokens.cachedInputTokens + tokens.cacheWriteTokens;
+  let matchedThreshold = -1;
+  for (const tier of price.tiers ?? []) {
+    if (fullInputTokens > tier.inputTokensAbove && tier.inputTokensAbove > matchedThreshold) {
+      matchedThreshold = tier.inputTokensAbove;
+      price = tier;
+    }
+  }
+  const longWriteTokens = tokens.cacheWrite1hTokens ?? 0;
+  if (tokens.cacheWriteTokens - longWriteTokens > 0 && price.cacheWritePerMTok === undefined)
+    return { ...base, unpricedReason: 'unknown_model' };
+  if (longWriteTokens > 0 && price.cacheWrite1hPerMTok === undefined)
+    return { ...base, unpricedReason: 'unknown_model' };
   const uncachedMicros = toMicros(price.inputPerMTok, tokens.uncachedInputTokens);
   const cachedMicros = price.cacheReadPerMTok != null ? toMicros(price.cacheReadPerMTok, tokens.cachedInputTokens) : 0;
   const cacheWriteMicros =
-    price.cacheWritePerMTok != null ? toMicros(price.cacheWritePerMTok, tokens.cacheWriteTokens) : 0;
+    price.cacheWritePerMTok != null ? toMicros(price.cacheWritePerMTok, tokens.cacheWriteTokens - longWriteTokens) : 0;
+  const longWriteMicros = toMicros(price.cacheWrite1hPerMTok ?? 0, longWriteTokens);
   const outputMicros = toMicros(price.outputPerMTok, tokens.outputTokens);
 
   return {
     ...base,
-    usdMicros: uncachedMicros + cachedMicros + cacheWriteMicros + outputMicros,
+    usdMicros: uncachedMicros + cachedMicros + cacheWriteMicros + longWriteMicros + outputMicros,
     source: 'catalog',
     ...(input.pricingVersion ? { pricingVersion: input.pricingVersion } : {}),
     ...(lookup.pricedFromProvider ? { pricedFromProvider: lookup.pricedFromProvider } : {}),

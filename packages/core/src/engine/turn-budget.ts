@@ -91,9 +91,13 @@ export class TurnBudgetControl<AppCtx = unknown> {
       ...(input.usage
         ? {
             usage: {
-              prompt_tokens: input.usage.inputTokens,
+              prompt_tokens: input.usage.inputTokens - (input.usage.cacheWriteTokens ?? 0),
               completion_tokens: input.usage.outputTokens,
               cache_read_tokens: input.usage.cachedInputTokens,
+              ...(input.usage.cacheWriteTokens !== undefined
+                ? { cache_creation_tokens: input.usage.cacheWriteTokens } : {}),
+              ...(input.usage.cacheWrite1hTokens !== undefined
+                ? { cache_creation_1h_tokens: input.usage.cacheWrite1hTokens } : {}),
               total_tokens: input.usage.inputTokens + input.usage.outputTokens,
             },
           }

@@ -95,3 +95,24 @@ output, and installs the tarball into a separate plain JavaScript project, and r
 concurrent turns with distinct settings and application contexts through the
 public entry point. Existing Term2 integration and e2e tiers exercise the first
 consumer.
+
+## Usage and catalog cost accounting
+
+`Usage.inputTokens` is total input including cache reads and cache writes. Optional
+`cacheWriteTokens` counts cache creation; `cacheWrite1hTokens` is its one-hour TTL
+subset. Existing models omitting both fields retain their previous behavior.
+The engine bridges this to `NormalizedUsage.prompt_tokens` (input including reads,
+excluding separately counted `cache_creation_tokens`); `total_tokens` includes each
+input/output token once. Compaction request records preserve these dimensions.
+
+`CatalogPrice.tiers` supplies whole-request rates above strictly exceeded
+`inputTokensAbove` thresholds. Thresholds include all input tokens, including reads
+and writes; the highest matching threshold wins. Provider-reported charges still
+win over catalog estimates. One-hour writes require an explicit
+`cacheWrite1hPerMTok` rate; the engine does not infer a vendor-specific TTL price.
+Reported cache creation without the corresponding short/one-hour rate is
+unpriced (an explicit zero rate still means free). The optional one-hour field in
+`BillableTokens` is omitted when usage omits the subset, preserving legacy object
+construction and return shapes. Catalog estimates retain integer-micro rounding
+per billable dimension. Catalog
+data, native usage normalization and consumer integration remain host-owned.
