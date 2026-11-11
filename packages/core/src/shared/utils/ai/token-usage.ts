@@ -1,10 +1,13 @@
 export interface NormalizedUsage {
+  /** Input including cache reads, excluding separately counted cache creation. */
   prompt_tokens?: number;
   completion_tokens?: number;
   total_tokens?: number;
   reasoning_tokens?: number;
   cache_read_tokens?: number;
   cache_creation_tokens?: number;
+  /** Subset of cache_creation_tokens with one-hour TTL. */
+  cache_creation_1h_tokens?: number;
   prompt_ms?: number;
   completion_ms?: number;
   tokens_per_second?: number;
