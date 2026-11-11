@@ -59,6 +59,24 @@ policy and continuity are optional. A host can supply `accounting` pricing and
 subscription callbacks; without them, actual provider charges are retained and
 unknown rates stay unpriced. No provider catalog or host settings are loaded.
 
+### Context window: capacity versus the host's assumption
+
+Real capacity comes from `TurnDeps.compaction.contextWindow` or, failing that,
+`Model.catalogContextWindow`; when known, it sizes the compaction trigger, the
+hard input limit and request admission. `Model.contextWindow` is required and
+host-supplied: catalog capacity when known, otherwise the host's own assumption.
+For a model without known capacity, the engine uses `Model.contextWindow` only to
+schedule automatic compaction at `contextWindow × compactThreshold` (or earlier, if
+`compactThresholdTokens` or `maxRequestInputTokens` trigger sooner). It is never a
+capacity or admission limit: a request above it is still admitted unless the host
+set `maxRequestInputTokens`. Manual compaction ignores it. The core has no default
+window of its own; the number is the host's policy, and automatic compaction
+rejects a non-positive or non-integer value when it would use it.
+
+Migration: `DEFAULT_ASSUMED_CONTEXT_WINDOW` (previously `128_000`) is no longer
+exported. Hosts that imported it must define their own fallback and set it as
+`Model.contextWindow` for models without catalog capacity.
+
 Local summaries set `ModelRequest.toolChoice` to `none`. Live-prefix summaries
 retain their tool schemas for cache matching; chunk summaries keep an empty
 tool list. Auxiliary preparation preserves these tool lists and the selection

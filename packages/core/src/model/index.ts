@@ -12,9 +12,6 @@ export { ModelFailure } from './failure.js';
 export type { ModelRecoveryEvidence } from './failure.js';
 export type ModelRecoveryBudget = RetryRecoveryBudget;
 
-/** Scheduling assumption only; not evidence of provider capacity. */
-export const DEFAULT_ASSUMED_CONTEXT_WINDOW = 128_000;
-
 // ---------- Conversation items (provider-neutral history) ----------
 
 export type ItemId = string & { readonly __brand: 'ItemId' };
@@ -226,6 +223,9 @@ export type ModelCapabilities = {
 
 export interface Model {
   readonly ref: ModelRef;
+  /** Host-supplied window: catalog capacity when known, otherwise the host's own
+   * assumption. Without catalog capacity it only schedules automatic compaction;
+   * it is never treated as capacity or an admission limit. */
   readonly contextWindow: number;
   /** Actual catalog capacity; absent for uncatalogued models. */
   readonly catalogContextWindow?: number;
