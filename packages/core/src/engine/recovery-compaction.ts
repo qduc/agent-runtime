@@ -4,7 +4,6 @@ import { isDeepStrictEqual } from 'node:util';
 import type { Item, ItemId, Model, ModelRef, ModelRequest, Usage } from '../model/index.js';
 import { ModelFailure } from '../model/failure.js';
 import { resolveModelContextPolicy } from './agent-runtime/model-context-policy.js';
-import { DEFAULT_ASSUMED_CONTEXT_WINDOW } from '../model/index.js';
 import {
   CONTEXT_COMPACTION_INSTRUCTIONS,
   CONTEXT_COMPACTION_REQUEST,
@@ -56,6 +55,10 @@ export type DirectCompactionInput = {
   readonly signal: AbortSignal;
   /** Use catalog capacity, not Model.contextWindow's synthetic fallback. */
   readonly contextWindow?: number;
+  /** The host's scheduling assumption (the resolved Model.contextWindow). Used only to
+   * schedule automatic compaction when `contextWindow` is unknown; never a capacity or
+   * admission limit. The core supplies no default. */
+  readonly assumedContextWindow: number;
   readonly maxRequestInputTokens?: number | null;
   readonly lastCompletedInputTokens?: number;
   readonly rearmAtEstimatedTokens?: number;
@@ -160,7 +163,7 @@ export async function compactDirectHistory(input: DirectCompactionInput): Promis
       ? policy.softTrigger
       : Math.min(
           policy.softTrigger ?? Infinity,
-          Math.floor(DEFAULT_ASSUMED_CONTEXT_WINDOW * input.settings.compactThreshold),
+          Math.floor(input.assumedContextWindow * input.settings.compactThreshold),
         );
   const measured = Math.max(estimate.renderedInputTokens, input.lastCompletedInputTokens ?? 0);
   if (!input.manual && softTrigger !== undefined && measured < softTrigger) return { kind: 'not_needed', estimate };
@@ -490,6 +493,13 @@ function validateSettings(input: DirectCompactionInput): void {
   }
   if (input.contextWindow !== undefined && (!Number.isSafeInteger(input.contextWindow) || input.contextWindow <= 0)) {
     throw new RangeError('Context window must be a positive integer or unknown');
+  }
+  if (
+    !input.manual &&
+    input.contextWindow === undefined &&
+    (!Number.isSafeInteger(input.assumedContextWindow) || input.assumedContextWindow <= 0)
+  ) {
+    throw new RangeError('Assumed context window must be a positive integer');
   }
   if (
     input.maxRequestInputTokens != null &&
