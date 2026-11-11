@@ -59,11 +59,6 @@ policy and continuity are optional. A host can supply `accounting` pricing and
 subscription callbacks; without them, actual provider charges are retained and
 unknown rates stay unpriced. No provider catalog or host settings are loaded.
 
-When a model's capacity is unknown, `DEFAULT_ASSUMED_CONTEXT_WINDOW` supplies a
-500,000-token scheduling assumption for automatic compaction. This does not
-establish provider capacity or a hard admission limit. Known model capacities
-and explicit host input limits remain authoritative.
-
 Local summaries set `ModelRequest.toolChoice` to `none`. Live-prefix summaries
 retain their tool schemas for cache matching; chunk summaries keep an empty
 tool list. Auxiliary preparation preserves these tool lists and the selection
