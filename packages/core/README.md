@@ -43,13 +43,37 @@ local and native compaction. The fields are host inputs, not history or events.
 | `prepareRequest` | Before every model dispatch, receives the request plus turn ID, model step, and signal. Returns the live request and optional tool registry. Stored history stays unchanged. |
 | `takeSteering` and `handle.steer()` | Admit new user items at the next request boundary; do not interrupt a response in flight. |
 | `interaction_required` and `handle.answer()` | Approval or question waits for the matching answer. An unanswered request waits until cancellation; hosts own timeout policy. |
-| `normalStop` | After a model response without tool calls, stop or continue with a reminder. |
+| `normalStop` | After a model response without tool calls, stop or continue with a reminder. Also consulted early for an opted-in stop check (below), with `stopCheck` set. |
+| `stopCheckTools` | Opt-in, default none. See [Stop-check tools](#stop-check-tools). |
 | `runNested` | Host assigns child identity and lifetime, runs the same loop, and returns its result. The host routes child interactions. |
 | Event acceptance | Every emitted receipt is acknowledged only after the host durably accepts its event. |
 
 A throwing request/steering/stop seam ends the turn; a slow seam delays progress.
 Cancellation reaches seam implementations through their supplied signals.
 `onTurnBoundary` observes dispatch, parking, cancellation, and termination.
+
+### Stop-check tools
+
+By default a tool result is never the model's final answer: after any tool call the
+engine sends another request so the model reads the result, and `normalStop` runs
+only after a response without tool calls. A host whose stop policy is driven by a
+self-check tool can save that request by listing the tool in `stopCheckTools`.
+The engine then consults `normalStop` with `stopCheck: { toolName, callId, modelStep }`
+right after the tool settles, but only when all of these hold:
+
+- the completed response carried non-whitespace assistant text;
+- that call was the response's only tool call;
+- its result is the latest history item and is not `isError`;
+- no steering was waiting (waiting steering is admitted and the model responds first).
+
+`stop` ends the turn on that response, so its text is the final reply and the
+call/result pair is the last history; `continue` publishes the reminder after the
+result, as at a normal stop. `defer` continues exactly as if the tool were not
+listed: the model reads the result and `normalStop` runs again at the next normal
+stop. A deferral must therefore have no side effects. Returning `defer` without
+`stopCheck` fails the turn. Hosts that do not set `stopCheckTools` see no change.
+The engine checks only shape; the host's policy still owns whether the check's
+result is valid for the stop. Nested turns get no `normalStop`, so no early stop.
 
 ## Opt-in helpers
 

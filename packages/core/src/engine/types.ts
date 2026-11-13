@@ -61,11 +61,19 @@ export type TurnBudget = {
   readonly toolEffect?: (name: string, input: unknown) => 'mutating' | undefined;
 };
 export type NormalStopDecision = {
-  readonly action: 'stop' | 'continue';
+  /** `defer` is valid only for a stop-check consultation: the turn continues exactly as without one. */
+  readonly action: 'stop' | 'continue' | 'defer';
   readonly reminder?: string;
   readonly terminalCause?: 'goal_check_unresolved' | 'completion_verification_blocked';
   readonly notice?: string;
   readonly goalMarkedAchieved?: boolean;
+};
+
+/** The lone stop-check call whose settled result is the latest history item. */
+export type StopCheckContext = {
+  readonly toolName: string;
+  readonly callId: ToolCallId;
+  readonly modelStep: number;
 };
 
 export type { ExecutionId, InteractionDecision, InteractionRequestId } from '../tools/contracts.js';
@@ -155,7 +163,17 @@ export type TurnDeps<AppCtx = unknown> = {
   readonly normalStop?: (context: {
     readonly turnId: TurnId;
     readonly signal: AbortSignal;
+    /** Present only when consulted early for a `stopCheckTools` call; see that field. */
+    readonly stopCheck?: StopCheckContext;
   }) => Promise<NormalStopDecision>;
+  /**
+   * Opt-in early stop. When a completed response carries non-empty assistant text and exactly one
+   * tool call, that call names one of these tools, its result settled without `isError`, and no
+   * steering is waiting, the engine consults `normalStop` with `stopCheck` before the next request.
+   * `stop` ends the turn on that response (its text is the final reply); `continue` adds the
+   * reminder; `defer` must have no side effects and continues as if the tool were not listed.
+   */
+  readonly stopCheckTools?: readonly string[];
   readonly recovery?: DirectRecoveryOptions;
   readonly continuity?: { readonly binding: DirectContinuityBinding; readonly state?: DirectContinuity };
   readonly compaction?: {

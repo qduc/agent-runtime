@@ -30,6 +30,7 @@ export class TurnModel<AppCtx = unknown> {
   #mainRequests = 0;
   #hasOutput = false;
   #requestHasOutput = false;
+  #answered = false;
   /** The last failed request's text-only output, which legacy's run loop withdraws before a retry. */
   #withdrawable: { modelStep: number; start: number; count: number; hadOutput: boolean } | undefined;
   #interruptTextStream?: () => void;
@@ -58,6 +59,16 @@ export class TurnModel<AppCtx = unknown> {
       (request, history, instructions) => this.#auxiliary(request, history, instructions),
       () => this.#continuity.clear(),
     );
+  }
+
+  /** Whether the latest completed response carried non-whitespace assistant text. */
+  get answered(): boolean {
+    return this.#answered;
+  }
+
+  /** Admit steering waiting at this boundary into history (Session already committed it). */
+  async admitSteering(history: Item[]): Promise<boolean> {
+    return (await this.#steering(history)).length > 0;
   }
 
   /** Retry only a model request, from accepted history and after all tools settle. */
@@ -347,6 +358,7 @@ export class TurnModel<AppCtx = unknown> {
 
   async #stream(request: ModelRequest, history: Item[], modelStep: number): Promise<{ calls: RootCall[]; done: Done }> {
     this.#requestHasOutput = false;
+    this.#answered = false;
     this.#withdrawable = undefined;
     const hadOutput = this.#hasOutput;
     let textOnly = true;
@@ -456,6 +468,7 @@ export class TurnModel<AppCtx = unknown> {
       if (interrupted) throw new SteeringInterrupt();
       if (!done) throw new Error('Model stream ended before the response completed.');
       outcome = 'completed';
+      this.#answered = text.trim() !== '' || items.some(hasAnswerText);
       this.#compaction.recordInputTokens(usage?.inputTokens);
       return { calls, done };
     } catch (error) {
@@ -504,6 +517,12 @@ export class TurnModel<AppCtx = unknown> {
 
 /** Explicit replacement metadata cuts the provider prefix; additive summaries never do.
  * Local compaction already installs its entire checkpoint/tail through accepted history_replaced. */
+function hasAnswerText(item: Item): boolean {
+  return (
+    item.type === 'assistant_message' && item.content.some((part) => part.type === 'text' && part.text.trim() !== '')
+  );
+}
+
 function fromLastReplacementBoundary(history: readonly Item[]): Item[] {
   for (let index = history.length - 1; index >= 0; index--) {
     const item = history[index]!;
