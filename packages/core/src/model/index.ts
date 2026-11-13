@@ -152,6 +152,11 @@ export type Usage = {
   readonly cacheWriteTokens?: number;
   /** Subset of cacheWriteTokens created with a one-hour TTL. */
   readonly cacheWrite1hTokens?: number;
+  /**
+   * Provider-reported reasoning tokens: a subset of `outputTokens`, never in
+   * addition to it. Omit when the provider does not report them.
+   */
+  readonly reasoningTokens?: number;
   /** The provider an aggregator routed this request to (OpenRouter's `provider`), when it reports one. */
   readonly upstreamProvider?: string;
 };

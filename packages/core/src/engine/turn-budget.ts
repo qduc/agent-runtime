@@ -98,6 +98,9 @@ export class TurnBudgetControl<AppCtx = unknown> {
                 ? { cache_creation_tokens: input.usage.cacheWriteTokens } : {}),
               ...(input.usage.cacheWrite1hTokens !== undefined
                 ? { cache_creation_1h_tokens: input.usage.cacheWrite1hTokens } : {}),
+              // A subset of completion_tokens: carried for reporting, never added to totals.
+              ...(input.usage.reasoningTokens !== undefined
+                ? { reasoning_tokens: input.usage.reasoningTokens } : {}),
               total_tokens: input.usage.inputTokens + input.usage.outputTokens,
             },
           }

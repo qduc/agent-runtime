@@ -102,7 +102,9 @@ JavaScript and declarations to `dist/`.
 The repository's installed-tarball smoke (`scripts/agent-package-smoke.mjs`) packs
 the package, installs it into a plain project and runs two concurrent turns with
 distinct settings and application contexts through the public entry point, then
-type-checks a consumer without `skipLibCheck`. `scripts/core-import-boundary.test.ts`
+type-checks a consumer without `skipLibCheck`. It also checks that reported
+reasoning tokens reach request and compaction cost records without changing token
+totals, catalog cost or unpriced-token budget consumption. `scripts/core-import-boundary.test.ts`
 keeps the source free of imports other than Node built-ins and its own files.
 Term2, the first consumer, exercises it in its integration and e2e tiers.
 Watch mode uses the Node-based compiler because native fanotify watching is not
@@ -122,6 +124,14 @@ subset. Existing models omitting both fields retain their previous behavior.
 The engine bridges this to `NormalizedUsage.prompt_tokens` (input including reads,
 excluding separately counted `cache_creation_tokens`); `total_tokens` includes each
 input/output token once. Compaction request records preserve these dimensions.
+
+Optional `Usage.reasoningTokens` is the provider-reported reasoning count, a subset
+of `outputTokens`. The engine copies it to the request cost record's
+`NormalizedUsage.reasoning_tokens` and keeps it on compaction request records; it
+is never added to `completion_tokens`, `total_tokens`, the unpriced-token budget or
+a catalog estimate. Absent means the provider reported none, and the cost record
+then omits `reasoning_tokens` (it is not set to zero). Hosts own extracting it from
+provider responses; `usage` events carry the `Usage` object unchanged.
 
 `CatalogPrice.tiers` supplies whole-request rates above strictly exceeded
 `inputTokensAbove` thresholds. Thresholds include all input tokens, including reads
