@@ -318,7 +318,7 @@ export class TurnCompaction<AppCtx = unknown> {
         requestId,
         modelStep: prepared.modelStep,
         model: prepared.request.model,
-        // Preserve optional billable cache dimensions too; the upstream
+        // Preserve optional cache dimensions and the reasoning subset too; the upstream
         // provider OpenRouter usage carries belongs to the status bar, not to the compaction record.
         ...(usage !== undefined
           ? {
@@ -328,6 +328,7 @@ export class TurnCompaction<AppCtx = unknown> {
                 cachedInputTokens: usage.cachedInputTokens,
                 ...(usage.cacheWriteTokens !== undefined ? { cacheWriteTokens: usage.cacheWriteTokens } : {}),
                 ...(usage.cacheWrite1hTokens !== undefined ? { cacheWrite1hTokens: usage.cacheWrite1hTokens } : {}),
+                ...(usage.reasoningTokens !== undefined ? { reasoningTokens: usage.reasoningTokens } : {}),
               },
             }
           : {}),

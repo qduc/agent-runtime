@@ -3,6 +3,7 @@ export interface NormalizedUsage {
   prompt_tokens?: number;
   completion_tokens?: number;
   total_tokens?: number;
+  /** Subset of completion_tokens; never added to totals or billed separately. */
   reasoning_tokens?: number;
   cache_read_tokens?: number;
   cache_creation_tokens?: number;
