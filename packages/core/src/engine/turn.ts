@@ -1,9 +1,9 @@
 /** Direct advancement; Session is the only writer and event-acceptance authority. */
 import type { Item, ItemId } from '../model/index.js';
 import type { NestedRunRequest, ToolRegistry } from '../tools/contracts.js';
-import type { TurnDeps, TurnHandle, TurnResult, TurnSpec } from './types.js';
+import type { NormalStopDecision, StopCheckContext, TurnDeps, TurnHandle, TurnResult, TurnSpec } from './types.js';
 import { TurnEvents, cancelled } from './turn-events.js';
-import { TurnTools } from './turn-tools.js';
+import { TurnTools, type RootCall } from './turn-tools.js';
 import { NativeBudgetExhausted, TurnBudgetControl } from './turn-budget.js';
 import { TurnModel, toModelError } from './turn-model.js';
 import { RetriesExhausted } from './recovery.js';
@@ -162,6 +162,32 @@ async function drive<AppCtx = unknown>(
   let result: TurnResult = { kind: 'completed' };
   const history = [...spec.history, ...spec.newItems];
   let reminderOrdinal = 0;
+  const stopChecks = new Set(deps.stopCheckTools ?? []);
+  /** Apply a stop-policy decision: true ends the turn, false continues after any reminder. */
+  const settle = async (decision: NormalStopDecision | undefined): Promise<boolean> => {
+    if (!decision || decision.action === 'stop') {
+      if (decision?.terminalCause)
+        result = {
+          kind: 'interrupted',
+          terminalCause: decision.terminalCause,
+          ...(decision.notice !== undefined ? { notice: decision.notice } : {}),
+        };
+      else if (decision?.notice !== undefined) result = { kind: 'completed', notice: decision.notice };
+      return true;
+    }
+    if (decision.action === 'defer') throw new Error('Normal-stop deferral requires a stop check');
+    if (!decision.reminder) throw new Error('Normal-stop continuation requires a reminder');
+    const item: Item = {
+      type: 'summary',
+      id: `${spec.turnId}:normal-stop:${++reminderOrdinal}` as ItemId,
+      // Legacy admits every harness stop reminder as a user message with this prefix.
+      text: `[Mode Notice] ${decision.reminder}`,
+      replaces: [],
+    };
+    await events.publish({ type: 'item', item });
+    history.push(item);
+    return false;
+  };
   try {
     if (operation === 'compaction') result = { kind: 'completed', compaction: await model.compact(history) };
     while (operation === 'conversation' && !signal.aborted && !tools.stopped) {
@@ -169,32 +195,21 @@ async function drive<AppCtx = unknown>(
       if (calls.length > 0) {
         await tools.run(calls, history);
         if (tools.stopped) break;
-        // A goal_check receipt is a tool result, not the model's final answer.
-        // Let the model consume it before applying normal-stop policy, as for other tools.
+        // A tool result is not the model's final answer: by default the model consumes it
+        // before normal-stop policy runs. A host-listed stop check alongside final text is
+        // the exception; a deferred consultation falls through to that default.
+        const stopCheck = deps.normalStop && stopChecks.size ? stopCheckCall(calls, history, stopChecks) : undefined;
+        if (!stopCheck || !model.answered) continue;
+        // Input the model has not seen yet needs its own response (and check).
+        if (await model.admitSteering(history)) continue;
+        const decision = await deps.normalStop!({ turnId: spec.turnId, signal, stopCheck });
+        if (signal.aborted) throw cancelled();
+        if (decision.action !== 'defer' && (await settle(decision))) break;
         continue;
       }
       const decision = await deps.normalStop?.({ turnId: spec.turnId, signal });
       if (signal.aborted) throw cancelled();
-      if (!decision || decision.action === 'stop') {
-        if (decision?.terminalCause)
-          result = {
-            kind: 'interrupted',
-            terminalCause: decision.terminalCause,
-            ...(decision.notice !== undefined ? { notice: decision.notice } : {}),
-          };
-        else if (decision?.notice !== undefined) result = { kind: 'completed', notice: decision.notice };
-        break;
-      }
-      if (!decision.reminder) throw new Error('Normal-stop continuation requires a reminder');
-      const item: Item = {
-        type: 'summary',
-        id: `${spec.turnId}:normal-stop:${++reminderOrdinal}` as ItemId,
-        // Legacy admits every harness stop reminder as a user message with this prefix.
-        text: `[Mode Notice] ${decision.reminder}`,
-        replaces: [],
-      };
-      await events.publish({ type: 'item', item });
-      history.push(item);
+      if (await settle(decision)) break;
     }
     if (signal.aborted) result = { kind: 'cancelled' };
   } catch (error) {
@@ -219,4 +234,18 @@ async function drive<AppCtx = unknown>(
     settled();
     events.finish(result);
   }
+}
+
+/** The response's lone call, when it is a host-listed stop check whose own result settled cleanly. */
+function stopCheckCall(
+  calls: readonly RootCall[],
+  history: readonly Item[],
+  names: ReadonlySet<string>,
+): StopCheckContext | undefined {
+  if (calls.length !== 1) return undefined;
+  const { item, modelStep } = calls[0]!;
+  const last = history.at(-1);
+  if (!names.has(item.toolName) || last?.type !== 'tool_result' || last.callId !== item.callId || last.isError)
+    return undefined;
+  return { toolName: item.toolName, callId: item.callId, modelStep };
 }
