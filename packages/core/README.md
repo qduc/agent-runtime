@@ -36,6 +36,11 @@ stable. Hosts give nested and advisory requests their own identity; `startNested
 accepts affinity with its turn ID. The engine carries it through retries and both
 local and native compaction. The fields are host inputs, not history or events.
 
+Model `codex_quota` events carry the existing weekly `quota` (or `null`) and may
+also carry `fiveHourQuota` (a quota or `null`). A five-hour-only observation can
+use `quota: null`; omitting `fiveHourQuota` preserves the existing event shape.
+The turn engine forwards these events to the host unchanged.
+
 ## Host seams
 
 | Seam | Contract |

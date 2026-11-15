@@ -194,7 +194,11 @@ export type TurnCompactionEvent =
       readonly requests: readonly DirectCompactionRequest[];
     };
 export type TurnEvent =
-  | { readonly type: 'codex_quota'; readonly quota: import('../model/index.js').CodexWeeklyQuota | null }
+  | {
+      readonly type: 'codex_quota';
+      readonly quota: import('../model/index.js').CodexWeeklyQuota | null;
+      readonly fiveHourQuota?: import('../model/index.js').CodexWeeklyQuota | null;
+    }
   /** Live-only: a retry the user is told about, with its backoff. */
   | {
       readonly type: 'retrying';
