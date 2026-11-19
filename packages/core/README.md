@@ -19,6 +19,14 @@ engine never writes history. `handle.cancel()` aborts physical work and drains
 known cleanup outcomes. Accepted deltas may be withdrawn during recovery; hosts
 must honor those withdrawals when displaying partial output.
 
+Live tool-argument progress is transient and scoped to a physical `modelStep`;
+when that request ends, `tool_call_progress_cleared` tells hosts to discard its
+partial progress. Usage reports remain retained for physical-request accounting.
+Neither progress nor usage is committed model output or an executed tool. A
+connection interruption after only those events may be retried within the
+configured recovery limit. Complete model items and tool effects remain subject to
+the normal committed-history and tool-settlement checks.
+
 `Tool<Input, AppCtx>` uses JSON Schema plus `parse`, `approval`, and `execute`.
 No schema-library object crosses the boundary. `ToolContext<AppCtx>.app` carries
 host capabilities; signal, progress, interaction, and nested execution remain
