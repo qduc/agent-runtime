@@ -360,6 +360,7 @@ export class TurnModel<AppCtx = unknown> {
     const requestController = new AbortController();
     let interrupted = false;
     let hasToolOutput = false;
+    let hasToolProgress = false;
     let acceptingText = false;
     let acceptanceFailed = false;
     this.#interruptTextStream = () => {
@@ -400,10 +401,10 @@ export class TurnModel<AppCtx = unknown> {
             hasToolOutput = true;
             textOnly = false;
             await this.events.publish({ ...event, turnId: this.spec.turnId, modelStep });
-            // Progress already shown to the caller is physical output evidence,
-            // even though it is not a completed/admitted tool or history item.
-            this.#hasOutput = true;
-            this.#requestHasOutput = true;
+            hasToolProgress = true;
+            // Argument progress is transient UI bookkeeping, not committed model
+            // output or an executable tool call. A connection drop here is safe to
+            // retry; complete tool_call items still set both output flags below.
             break;
           case 'item': {
             textOnly = false;
@@ -442,7 +443,8 @@ export class TurnModel<AppCtx = unknown> {
               modelStep,
               ...(event.speed ? { speed: event.speed } : {}),
             });
-            this.#requestHasOutput = true;
+            // Usage is retained for physical-request accounting, not evidence
+            // that the model produced user-visible or executable output.
             break;
           case 'done':
             done = event;
@@ -489,6 +491,8 @@ export class TurnModel<AppCtx = unknown> {
       // Every retained item/delta already has its own durable Session receipt.
       if (outcome !== 'completed' && textOnly && !interrupted && items.length > 0)
         this.#withdrawable = { modelStep, start: history.length, count: items.length, hadOutput };
+      if (hasToolProgress)
+        await this.events.publish({ type: 'tool_call_progress_cleared', turnId: this.spec.turnId, modelStep });
       history.push(...items);
       await this.budget.record({
         requestId: `${this.spec.turnId}:model:${modelStep}`,

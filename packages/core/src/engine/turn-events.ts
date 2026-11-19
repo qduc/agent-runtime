@@ -8,13 +8,13 @@ type Receipt = {
   accepted?: () => void;
 };
 
-// These outcomes are chosen only after an accepted compaction start; success
-// additionally requires accepted history replacement. Cancellation must not
-// erase that evidence or relabel accepted replacement as failed compaction.
+// Cancellation drains known outcomes and transient-state cleanup. Compaction
+// outcomes require an accepted start; success also requires history replacement.
 const isCleanup = (event: TurnEvent): boolean =>
   event.type === 'compaction_completed' ||
   event.type === 'compaction_failed' ||
   event.type === 'tool_execution_finished' ||
+  event.type === 'tool_call_progress_cleared' ||
   event.type === 'request_cost' ||
   (event.type === 'item' && event.item.type === 'tool_result');
 

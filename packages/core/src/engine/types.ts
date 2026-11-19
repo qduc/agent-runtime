@@ -214,6 +214,8 @@ export type TurnEvent =
   | TurnCompactionEvent
   /** Live-only progress. The actual physical request scopes reused provider IDs. */
   | (ToolCallArgumentProgress & { readonly turnId: TurnId; readonly modelStep: number })
+  /** Live-only: discard tool-argument progress previously emitted for this physical request. */
+  | { readonly type: 'tool_call_progress_cleared'; readonly turnId: TurnId; readonly modelStep: number }
   | {
       readonly type: 'history_replaced';
       readonly history: readonly Item[];
