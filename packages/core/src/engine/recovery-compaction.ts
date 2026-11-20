@@ -1,26 +1,38 @@
 /** Real compaction operations, returning proposals for Session's sole writer. */
 import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
-import type { Item, ItemId, Model, ModelRef, ModelRequest, Usage } from '../model/index.js';
+import type { Item, ItemId, Model, ModelRef, ModelRequest, ProviderOpaqueItem, Usage } from '../model/index.js';
 import { ModelFailure } from '../model/failure.js';
+import { turnText, type TurnText } from './host-text.js';
 import { resolveModelContextPolicy } from './agent-runtime/model-context-policy.js';
-import {
-  CONTEXT_COMPACTION_INSTRUCTIONS,
-  CONTEXT_COMPACTION_REQUEST,
-  buildContextCompactionInput,
-  wrapContextSummary,
-} from './prompts/context-compaction.js';
+import { defaultCompactionPrompts, type CompactionPrompts } from './prompts/context-compaction.js';
 import { hasCompleteDirectToolPairs } from './recovery-history.js';
 import { selfContained } from './recovery-continuity.js';
 import { toolReceipts } from './compaction-receipts.js';
 import {
+  defaultContextEstimator,
   estimateDirectContext,
-  legacyEstimateBytes,
-  legacyEstimateHistory,
+  type ContextEstimator,
   type DirectContextEstimate,
 } from './context-estimate.js';
 
 export { estimateDirectContext, type DirectContextEstimate };
+export type { CompactionPrompts, ContextEstimator };
+
+/** Host behaviour for compaction that is not serializable settings. Every hook is optional. */
+export type DirectCompactionHooks = {
+  /** Token estimates for triggers, admission and the hot-tail cut; defaults to bytes/4 of the request JSON. */
+  readonly estimator?: ContextEstimator;
+  /** Summary prompts and the checkpoint wrapper; defaults to `defaultCompactionPrompts`. */
+  readonly prompts?: CompactionPrompts;
+  /**
+   * A `user_message` the host wrote itself (task updates, background deliveries) rather than a person.
+   * Local compaction protects every other user message verbatim; host messages may be summarized.
+   */
+  readonly isHostMessage?: (item: Extract<Item, { type: 'user_message' }>) => boolean;
+  /** The argument preview in a tool receipt line; defaults to the raw arguments. */
+  readonly receiptArguments?: (toolName: string, rawArguments: string) => string;
+};
 
 export type DirectCompactionSettings = {
   readonly enabled: boolean;
@@ -48,7 +60,7 @@ export type DirectCompactionRequest = {
   readonly usage?: Usage;
   readonly costUsd?: number | string;
 };
-export type DirectCompactionInput = {
+export type DirectCompactionInput = DirectCompactionHooks & {
   readonly request: ModelRequest;
   readonly model: Model;
   readonly settings: DirectCompactionSettings;
@@ -63,11 +75,14 @@ export type DirectCompactionInput = {
   readonly lastCompletedInputTokens?: number;
   readonly rearmAtEstimatedTokens?: number;
   readonly rearmAtRenderedTokens?: number;
-  /** Legacy's client-wide hold after a blocked or failed automatic attempt; replaces the checkpoint rearm while set. */
+  /** A session-wide hold after a blocked or failed automatic attempt; replaces the checkpoint rearm while set. */
   readonly blockedRearmAtEstimatedTokens?: number;
   /** Host-recorded receipt previews from the last accepted local checkpoint. */
   readonly checkpointReceipts?: readonly string[];
   readonly manual?: boolean;
+  /** A provider-native compaction checkpoint, which local compaction cannot summarize. */
+  readonly isProviderCheckpoint?: (item: ProviderOpaqueItem) => boolean;
+  readonly text?: TurnText;
   /** Await acceptance before attempting compaction. Automatic no-op scheduling
    * emits nothing; manual evaluation starts even if its plan is then blocked. */
   readonly onStarted?: (evidence: DirectCompactionStart) => Promise<void>;
@@ -92,7 +107,7 @@ export type DirectCompactionResult =
         | 'result_still_too_large';
       readonly estimate: DirectContextEstimate;
       readonly usage?: readonly Usage[];
-      /** Where legacy rearms after this block (local-context-compactor rearmAtTokens). */
+      /** Where automatic compaction rearms after this block. */
       readonly rearmAtEstimatedTokens?: number;
     }
   | {
@@ -119,7 +134,7 @@ export type DirectCompactionResult =
 export async function compactDirectHistory(input: DirectCompactionInput): Promise<DirectCompactionResult> {
   input.signal.throwIfAborted();
   validateSettings(input);
-  const estimate = estimateDirectContext(input.request, input.contextWindow);
+  const estimate = estimateDirectContext(input.request, input.contextWindow, input.estimator);
   // Selection is source-backed capability/configuration, not proof of dispatch.
   // Explicit native unavailability has no selected available strategy.
   const strategy =
@@ -153,9 +168,9 @@ export async function compactDirectHistory(input: DirectCompactionInput): Promis
     ratio: input.settings.compactThreshold,
     rawTrigger: input.manual ? undefined : input.settings.compactThresholdTokens,
   });
-  // Legacy's manual compaction passes no raw trigger, so its local compactor refuses a model it cannot size.
+  // Manual compaction passes no raw trigger, so local compaction refuses a model it cannot size.
   if (input.manual && strategy === 'local' && policy.softTrigger === undefined)
-    throw new Error('Set agent.contextCompaction.compactThresholdTokens for an uncatalogued model');
+    throw new Error(turnText(input.text, 'compactionThresholdRequired')());
   if (!hasCompleteDirectToolPairs(input.request.input)) return { kind: 'blocked', reason: 'unsettled_tools', estimate };
   // The assumption schedules maintenance only; it must never become a hard admission limit.
   const softTrigger =
@@ -198,7 +213,7 @@ export async function compactDirectHistory(input: DirectCompactionInput): Promis
     : await compactLocally(input, localUsableTokens(input, policy), estimate, started, rearmed);
   input.signal.throwIfAborted();
   if ('kind' in operation) return operation;
-  const after = estimateDirectContext({ ...input.request, input: operation.history }, input.contextWindow);
+  const after = estimateDirectContext({ ...input.request, input: operation.history }, input.contextWindow, input.estimator);
   if (
     !operation.history.length ||
     isDeepStrictEqual(operation.history, input.request.input) ||
@@ -239,7 +254,12 @@ export async function compactDirectHistory(input: DirectCompactionInput): Promis
  * Call with the full prepared envelope, before continuity slices it to a delta. */
 export function enforceDirectInputLimit(
   request: ModelRequest,
-  input: { readonly maxRequestInputTokens?: number | null; readonly contextWindow?: number },
+  input: {
+    readonly maxRequestInputTokens?: number | null;
+    readonly contextWindow?: number;
+    readonly estimator?: ContextEstimator;
+    readonly text?: TurnText;
+  },
 ): void {
   const policy = resolveModelContextPolicy({
     contextWindow: input.contextWindow,
@@ -247,14 +267,20 @@ export function enforceDirectInputLimit(
     inputLimit: input.maxRequestInputTokens,
   });
   if (policy.hardInputLimit === undefined) return;
-  const estimated = estimateDirectContext(request, input.contextWindow).renderedInputTokens;
+  const estimated = estimateDirectContext(request, input.contextWindow, input.estimator).renderedInputTokens;
   if (estimated <= policy.hardInputLimit) return;
-  // Legacy's RequestInputLimitError text (src/engine/agent-runtime/request-input-limit.ts);
-  // the `request_input_limit: ` prefix carries its code to clients.
-  const text =
+  // The `request_input_limit: ` prefix carries the refusal's code to clients.
+  const text = turnText(input.text, 'requestInputLimit')(
     policy.limitSource === 'model_capacity'
-      ? `Request cannot fit the known model capacity (input budget ${policy.hardInputLimit}, output reserve ${policy.outputReserve}, estimation reserve ${policy.estimationReserve}, capacity ${policy.capacity}). Work is retained. Compact, choose a larger-capacity model, or lower an explicit output allocation before resuming.`
-      : `Request input exceeds configured ceiling (${estimated} > ${policy.hardInputLimit} tokens). Work is retained. Compact, use a concise artifact-backed handoff, or explicitly raise agent.maxRequestInputTokens before resuming.`;
+      ? {
+          limitSource: 'model_capacity',
+          inputBudget: policy.hardInputLimit,
+          outputReserve: policy.outputReserve,
+          estimationReserve: policy.estimationReserve,
+          capacity: policy.capacity,
+        }
+      : { limitSource: 'explicit_input_ceiling', estimated, limit: policy.hardInputLimit },
+  );
   throw new ModelFailure({ kind: 'context_overflow', retryable: false, message: `request_input_limit: ${text}` });
 }
 
@@ -263,8 +289,8 @@ type LocalOperation =
   | Extract<DirectCompactionResult, { kind: 'blocked' }>;
 
 /**
- * Legacy's local planning budget (local-context-compactor.ts): the input ceiling, else a planning scale from the
- * window, configured caps or trigger, less what the instructions and tools take in every request.
+ * Local planning budget: the input ceiling, else a planning scale from the window, configured caps or trigger,
+ * less what the instructions and tools take in every request.
  */
 function localUsableTokens(input: DirectCompactionInput, policy: ReturnType<typeof resolveModelContextPolicy>): number {
   const window =
@@ -273,11 +299,12 @@ function localUsableTokens(input: DirectCompactionInput, policy: ReturnType<type
     input.settings.compactThresholdTokens ??
     policy.softTrigger ??
     Infinity;
-  const fixed = estimateDirectContext({ ...input.request, input: [] }, input.contextWindow).renderedInputTokens;
+  const fixed = estimateDirectContext({ ...input.request, input: [] }, input.contextWindow, input.estimator)
+    .renderedInputTokens;
   return (policy.hardInputLimit ?? window) - fixed;
 }
 
-/** Like legacy, a history that cannot fit or has no complete cold turn is refused before the attempt is announced. */
+/** A history that cannot fit or has no complete cold turn is refused before the attempt is announced. */
 async function compactLocally(
   input: DirectCompactionInput,
   usable: number,
@@ -286,19 +313,20 @@ async function compactLocally(
   rearmed: { readonly rearmAtEstimatedTokens?: number },
 ): Promise<LocalOperation> {
   if (usable <= 0) {
-    // Legacy: with no room at all, the history's own eligibility names the reason (often no complete cold turn).
-    const eligibility = planTail(input.request.input, Infinity);
+    // With no room at all, the history's own eligibility names the reason (often no complete cold turn).
+    const eligibility = planTail(input, Infinity);
     return {
       kind: 'blocked',
       reason: typeof eligibility === 'string' ? eligibility : 'single_turn_too_large',
       estimate,
     };
   }
-  const plan = planTail(input.request.input, usable);
+  const plan = planTail(input, usable);
+  const prompts = input.prompts ?? defaultCompactionPrompts;
   if (plan === 'no_complete_cold_turn') return { kind: 'blocked', reason: plan, estimate, ...rearmed };
   await started();
   if (typeof plan === 'string') return { kind: 'blocked', reason: plan, estimate, ...rearmed };
-  if (plan.cold.some((item) => item.type === 'provider_opaque' && item.item.type === 'compaction')) {
+  if (plan.cold.some((item) => item.type === 'provider_opaque' && input.isProviderCheckpoint?.(item))) {
     return { kind: 'blocked', reason: 'opaque_context', estimate, ...rearmed };
   }
   const summaryOutputCap = Math.max(
@@ -308,7 +336,7 @@ async function compactLocally(
   const liveRequest = selfContained({
     ...input.request,
     toolChoice: 'none',
-    input: [...input.request.input, summaryMessage(CONTEXT_COMPACTION_REQUEST)],
+    input: [...input.request.input, summaryMessage(prompts.request)],
     maxOutputTokens: summaryOutputCap,
   });
   const summaryInputLimit = Math.min(
@@ -325,7 +353,7 @@ async function compactLocally(
   };
   if (
     Number.isFinite(summaryInputLimit) &&
-    estimateDirectContext(liveRequest, input.contextWindow).renderedInputTokens <= summaryInputLimit
+    estimateDirectContext(liveRequest, input.contextWindow, input.estimator).renderedInputTokens <= summaryInputLimit
   ) {
     summaryText = await generateSummary(input.model, liveRequest, input.signal, (record) => onUsage(record, 1));
   } else {
@@ -336,13 +364,16 @@ async function compactLocally(
       input.signal.throwIfAborted();
       const summaryRequest = selfContained({
         ...input.request,
-        instructions: CONTEXT_COMPACTION_INSTRUCTIONS,
+        instructions: prompts.instructions,
         tools: [],
         toolChoice: 'none',
-        input: [summaryMessage(buildContextCompactionInput(summaryText || null, JSON.stringify(chunk)))],
+        input: [summaryMessage(prompts.buildInput(summaryText || null, JSON.stringify(chunk)))],
         maxOutputTokens: summaryOutputCap,
       });
-      if (estimateDirectContext(summaryRequest, input.contextWindow).renderedInputTokens > summaryInputLimit) {
+      if (
+        estimateDirectContext(summaryRequest, input.contextWindow, input.estimator).renderedInputTokens >
+        summaryInputLimit
+      ) {
         return { kind: 'blocked', reason: 'summary_input_too_large', estimate, usage, ...rearmed };
       }
       summaryText = await generateSummary(input.model, summaryRequest, input.signal, (record) =>
@@ -352,48 +383,38 @@ async function compactLocally(
   }
   input.signal.throwIfAborted();
   const removed = plan.cold.filter((item) => item.type !== 'user_message');
-  // Legacy keeps every receipt in the checkpoint and shows the model the newest 40 (renderToolReceipts).
-  const checkpointReceipts = [...(input.checkpointReceipts ?? []), ...toolReceipts(plan.cold)];
+  // Every receipt stays in the checkpoint; the model sees the newest 40.
+  const checkpointReceipts = [
+    ...(input.checkpointReceipts ?? []),
+    ...toolReceipts(plan.cold, input.receiptArguments),
+  ];
   const shown = checkpointReceipts.slice(-40);
   const omitted = checkpointReceipts.length - shown.length;
   const rendered = [...(omitted > 0 ? [`(${omitted} earlier calls omitted)`] : []), ...shown].join('\n');
   const checkpoint: Item = {
     type: 'summary',
     id: `compact_${randomUUID()}` as ItemId,
-    text: wrapContextSummary(summaryText, rendered || undefined),
+    text: prompts.wrapSummary(summaryText, rendered || undefined),
     replaces: removed.map((item) => item.id),
   };
   return { history: [checkpoint, ...plan.hot], usage, checkpointReceipts };
 }
 
-/**
- * Session background deliveries are task data, not a new human turn. The
- * strings are owned by the session layer; the engine cannot import it.
- * Counting them as protected users fills the hot-tail budget and keeps only
- * the newest tool round.
- */
-function backgroundNotice(item: Item): boolean {
-  if (item.type !== 'user_message') return false;
-  const text = item.content
-    .filter((part) => part.type === 'text')
-    .map((part) => part.text)
-    .join('');
-  return (
-    text.startsWith('Background shell_output (task data, not a human instruction or permission):') ||
-    text.startsWith('Background task update (task data, not a human instruction or new permission):')
-  );
-}
-
 /** Protect genuine user items verbatim; prefer the newest two user turns, then settled tool rounds. */
 function planTail(
-  history: readonly Item[],
+  input: DirectCompactionInput,
   usable: number,
 ): { cold: readonly Item[]; hot: readonly Item[] } | 'no_complete_cold_turn' | 'single_turn_too_large' {
+  const history = input.request.input;
+  const estimator = input.estimator ?? defaultContextEstimator;
+  // Host-written messages are task data, not a new human turn; protecting them would fill the hot-tail
+  // budget and keep only the newest tool round.
+  const protectedUser = (item: Item): boolean => item.type === 'user_message' && !input.isHostMessage?.(item);
   const users: number[] = [];
   const rounds: number[] = [];
   const pending: string[] = [];
   for (const [index, item] of history.entries()) {
-    if (item.type === 'user_message' && !pending.length && !backgroundNotice(item)) users.push(index);
+    if (protectedUser(item) && !pending.length) users.push(index);
     if (item.type === 'tool_call') pending.push(item.callId);
     if (item.type === 'tool_result') {
       const occurrence = pending.indexOf(item.callId);
@@ -404,10 +425,10 @@ function planTail(
   }
   if (pending.length) return 'no_complete_cold_turn';
   const hotAt = (cut: number): readonly Item[] => [
-    ...history.slice(0, cut).filter((item) => item.type === 'user_message' && !backgroundNotice(item)),
+    ...history.slice(0, cut).filter(protectedUser),
     ...history.slice(cut),
   ];
-  const tokensAt = (cut: number): number => Math.ceil(legacyEstimateBytes(legacyEstimateHistory(hotAt(cut))) / 4);
+  const tokensAt = (cut: number): number => estimator.historyTokens(hotAt(cut));
   const preferred = users.length >= 3 ? users[users.length - 2]! : 0;
   const candidates = rounds.slice(0, -1);
   const budget = Math.min(16_000, Math.max(1_000, Math.floor(usable * 0.25)), usable);

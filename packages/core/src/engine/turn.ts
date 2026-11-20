@@ -7,6 +7,7 @@ import { TurnTools } from './turn-tools.js';
 import { NativeBudgetExhausted, TurnBudgetControl } from './turn-budget.js';
 import { TurnModel, toModelError } from './turn-model.js';
 import { RetriesExhausted } from './recovery.js';
+import { turnText } from './host-text.js';
 
 export type { TurnSpec, TurnResult, TurnEvent, TurnHandle } from './types.js';
 
@@ -169,7 +170,7 @@ async function drive<AppCtx = unknown>(
       if (calls.length > 0) {
         await tools.run(calls, history);
         if (tools.stopped) break;
-        // A goal_check receipt is a tool result, not the model's final answer.
+        // A control tool's receipt is a tool result, not the model's final answer.
         // Let the model consume it before applying normal-stop policy, as for other tools.
         continue;
       }
@@ -189,8 +190,7 @@ async function drive<AppCtx = unknown>(
       const item: Item = {
         type: 'summary',
         id: `${spec.turnId}:normal-stop:${++reminderOrdinal}` as ItemId,
-        // Legacy admits every harness stop reminder as a user message with this prefix.
-        text: `[Mode Notice] ${decision.reminder}`,
+        text: turnText(deps.text, 'notice')(decision.reminder, 'normal_stop'),
         replaces: [],
       };
       await events.publish({ type: 'item', item });

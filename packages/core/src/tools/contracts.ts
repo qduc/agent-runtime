@@ -12,7 +12,8 @@ export type NestedRunOutcome =
   | { readonly kind: 'budget_exhausted' }
   | {
       readonly kind: 'interrupted';
-      readonly terminalCause?: 'goal_check_unresolved' | 'completion_verification_blocked';
+      /** The nested turn's host-defined `TurnResult` terminal cause. */
+      readonly terminalCause?: string;
     }
   | { readonly kind: 'failed'; readonly error: ModelError };
 
@@ -20,7 +21,7 @@ export type NestedRunRequest = {
   /** Original caller task input, preserved separately from resolved instructions/history. */
   readonly input?: string;
   readonly mode?: 'foreground' | 'background';
-  /** A continuation keeps its settled run's ID, as legacy's async registry does. */
+  /** A continuation keeps its settled run's ID. */
   readonly runId?: string;
   readonly name?: string;
   readonly role?: string;
@@ -43,7 +44,7 @@ export type NestedRunResult = {
   readonly toolUseCounts?: readonly { readonly toolName: string; readonly count: number }[];
   readonly items: readonly Item[];
   readonly outcome: NestedRunOutcome;
-  /** Host-formatted legacy result (evidence, final text) that a background completion notice carries. */
+  /** Host-formatted result (evidence, final text) that a background completion notice carries. */
   readonly report?: string;
 };
 
@@ -52,7 +53,7 @@ export type InteractionRequestId = string & { readonly __brand: 'InteractionRequ
 export type InteractionDecision = (
   | {
       readonly kind: 'allow';
-      /** One of the request's own `grants`: the session scope the user chose (legacy's grant answers). */
+      /** One of the request's own `grants`: the session scope the user chose. */
       readonly grant?: string;
     }
   | { readonly kind: 'deny'; readonly reason?: string }
@@ -92,7 +93,7 @@ export type ToolContext<AppCtx = unknown> = {
 export type Risk = 'low' | 'medium' | 'high';
 
 export type ApprovalRequirement =
-  /** `batched`: legacy still counts the call in its approval batch, decided by policy without a prompt. */
+  /** `batched`: the call still joins the response's approval batch, decided by policy without a prompt. */
   | { readonly kind: 'none'; readonly batched?: true }
   /** The call's own question, asked with the response's approvals before any of them runs. */
   | { readonly kind: 'question'; readonly request: ToolInteractionRequest }
@@ -119,6 +120,12 @@ export type ToolResult = {
 export interface Tool<Input = unknown, AppCtx = unknown> {
   readonly spec: ToolSpec;
   readonly parallelSafe?: boolean | ((input: Input, ctx: ToolContext<AppCtx>) => boolean | Promise<boolean>);
+  /**
+   * A control tool that must run on its own: when a model response contains it alongside other calls it
+   * receives an error result instead of running, and `ToolContext.executeChild` refuses it, so only a root
+   * call can invoke it. The engine reads this from the registry that resolved the call.
+   */
+  readonly standalone?: true;
   /** Throws on invalid input; the engine reports that to the model as a tool error. */
   parse(raw: unknown): Input;
   /** Decides before execution. Pure: no side effects. */

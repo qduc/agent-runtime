@@ -6,6 +6,8 @@ import type {
   ModelRegistry,
   ModelRequest,
   ModelAffinity,
+  ProviderOpaqueItem,
+  ProviderStatus,
   ReasoningEffort,
   StopReason,
   ToolCallId,
@@ -31,7 +33,9 @@ import type {
   DirectCompactionResult,
   DirectCompactionStart,
   DirectCompactionRequest,
+  DirectCompactionHooks,
 } from './recovery-compaction.js';
+import type { TurnText } from './host-text.js';
 import type { DirectContextEstimate } from './context-estimate.js';
 import type {
   ModelRequestCost,
@@ -62,8 +66,10 @@ export type TurnBudget = {
 };
 export type NormalStopDecision = {
   readonly action: 'stop' | 'continue';
+  /** Required to continue: the notice added to history (formatted by `TurnText.notice`). */
   readonly reminder?: string;
-  readonly terminalCause?: 'goal_check_unresolved' | 'completion_verification_blocked';
+  /** A host-defined cause; a stop that carries one ends the turn `interrupted` instead of `completed`. */
+  readonly terminalCause?: string;
   readonly notice?: string;
   readonly goalMarkedAchieved?: boolean;
 };
@@ -87,7 +93,7 @@ export type TurnSpec = {
   readonly limits?: { readonly maxModelCalls: number; readonly maxToolCalls: number };
 };
 export type DirectManualCompactionOutcome =
-  /** Estimated rendered input tokens before and after, as legacy's manual compaction reports them. */
+  /** Estimated rendered input tokens before and after, from the compaction estimator. */
   | { readonly kind: 'compacted'; readonly tokensBefore: number; readonly tokensAfter: number }
   | { readonly kind: 'blocked'; readonly reason: string };
 export type TurnResult =
@@ -95,7 +101,8 @@ export type TurnResult =
   | { readonly kind: 'cancelled' }
   | {
       readonly kind: 'interrupted';
-      readonly terminalCause?: 'goal_check_unresolved' | 'completion_verification_blocked' | 'budget_exhausted';
+      /** `budget_exhausted` from the engine's run budget; anything else is a host `NormalStopDecision` cause. */
+      readonly terminalCause?: string;
       readonly notice?: string;
     }
   | { readonly kind: 'failed'; readonly error: ModelError; readonly notice?: string };
@@ -148,9 +155,9 @@ export type TurnDeps<AppCtx = unknown> = {
     observe(lastInputTokens: number | undefined): readonly string[];
     settle(lastInputTokens: number | undefined): void;
   };
-  /** Session-wide hold after a blocked or failed automatic compaction (legacy agent-client), across turns. */
+  /** Session-wide hold after a blocked or failed automatic compaction, across turns. */
   readonly compactionHold?: { rearmAt?: number };
-  /** The application log, for the legacy warnings a turn writes (compaction blocked or failed). */
+  /** The application log, for the warnings a turn writes (compaction blocked or failed). */
   readonly warn?: (message: string, fields: Readonly<Record<string, unknown>>) => void;
   readonly normalStop?: (context: {
     readonly turnId: TurnId;
@@ -158,7 +165,15 @@ export type TurnDeps<AppCtx = unknown> = {
   }) => Promise<NormalStopDecision>;
   readonly recovery?: DirectRecoveryOptions;
   readonly continuity?: { readonly binding: DirectContinuityBinding; readonly state?: DirectContinuity };
-  readonly compaction?: {
+  /** Host wording for notices and failure messages; each hook falls back to a neutral default. */
+  readonly text?: TurnText;
+  /**
+   * A provider-native compaction checkpoint in history. Requests start from the newest one (it stands in for
+   * everything before it), and local compaction refuses to summarize one. Without it, only `summary` items
+   * with `replaces` cut the request prefix.
+   */
+  readonly isProviderCheckpoint?: (item: ProviderOpaqueItem) => boolean;
+  readonly compaction?: DirectCompactionHooks & {
     readonly settings: DirectCompactionSettings;
     readonly contextWindow?: number;
     readonly maxRequestInputTokens?: number | null;
@@ -194,11 +209,8 @@ export type TurnCompactionEvent =
       readonly requests: readonly DirectCompactionRequest[];
     };
 export type TurnEvent =
-  | {
-      readonly type: 'codex_quota';
-      readonly quota: import('../model/index.js').CodexWeeklyQuota | null;
-      readonly fiveHourQuota?: import('../model/index.js').CodexWeeklyQuota | null;
-    }
+  /** Live-only: an adapter's `provider_status`, passed through unchanged. */
+  | ProviderStatus
   /** Live-only: a retry the user is told about, with its backoff. */
   | {
       readonly type: 'retrying';
@@ -206,10 +218,9 @@ export type TurnEvent =
       readonly maxRetries: number;
       readonly delayMs: number;
       readonly error: ModelError;
-      readonly toolName: 'turn' | 'conversation';
       readonly retryType: 'upstream' | 'connection_interrupted';
     }
-  /** Live-only: the engine retries a failed model request (legacy's subagent retry observation). */
+  /** Live-only: the engine retries a failed model request without telling the user (a silent retry). */
   | { readonly type: 'model_retrying'; readonly attempt: number; readonly maxRetries: number; readonly delayMs: number }
   | TurnCompactionEvent
   /** Live-only progress. The actual physical request scopes reused provider IDs. */

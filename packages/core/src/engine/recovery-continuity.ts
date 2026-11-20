@@ -122,7 +122,7 @@ export class DirectContinuity {
   /**
    * A segment ended by a cancelled question keeps its response as the chain point. The next user turn chains from
    * it and sends the tool outputs that segment settled, the no-answer result included, ahead of its own input
-   * (#150 item 10: legacy left them out, and the Responses API refused the request with "No tool output found").
+   * (leaving them out made the Responses API refuse the request with "No tool output found").
    * Applies only when the history added since the checkpoint is exactly those outputs and one is the unanswered
    * question; anything else keeps the normal rule that a new turn cannot inherit tool debt.
    */

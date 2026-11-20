@@ -1,7 +1,10 @@
 import type { Item } from '../model/index.js';
 
-/** Legacy local-context-compactor's receipt line: `- name: arguments → first output line`, each clipped. */
-export function toolReceipts(history: readonly Item[]): readonly string[] {
+/** One receipt line per settled call: `- name: arguments → first output line`, each clipped. */
+export function toolReceipts(
+  history: readonly Item[],
+  receiptArguments: (toolName: string, rawArguments: string) => string = (_name, args) => args,
+): readonly string[] {
   const calls = new Map<string, Extract<Item, { type: 'tool_call' }>>();
   const receipts = new Map<string, string>();
   for (const item of history) {
@@ -15,7 +18,7 @@ export function toolReceipts(history: readonly Item[]): readonly string[] {
       .find((line) => line.trim() && !line.startsWith('[truncated'));
     receipts.set(
       item.callId,
-      `- ${call.toolName}: ${clip(receiptArguments(args), 100)} → ${clip(output ?? '(no output)', 80)}`,
+      `- ${call.toolName}: ${clip(receiptArguments(call.toolName, args), 100)} → ${clip(output ?? '(no output)', 80)}`,
     );
   }
   return [...receipts.values()];
@@ -25,16 +28,3 @@ const clip = (text: string, max: number): string => {
   const flat = text.replace(/\s+/g, ' ').trim();
   return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
 };
-
-/** What the host ran, preferred over the model's description of it. */
-function receiptArguments(args: string): string {
-  try {
-    const parsed = JSON.parse(args) as Record<string, unknown>;
-    for (const key of ['command', 'path', 'file_path', 'url', 'query', 'description'] as const) {
-      if (typeof parsed[key] === 'string') return parsed[key];
-    }
-  } catch {
-    // Not JSON: show it as it came.
-  }
-  return args;
-}

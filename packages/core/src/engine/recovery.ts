@@ -57,7 +57,7 @@ export type DirectRecoveryDecision =
         | 'retry_limit'
         | 'recovery_budget';
       readonly admission?: RetryRecoveryAdmission;
-      /** Legacy's "Could not reach …" count once transient retries are used up. */
+      /** The attempt count the exhausted-retries notice reports once transient retries are used up. */
       readonly exhaustedAfter?: number;
     }
   | {
@@ -80,7 +80,7 @@ export type DirectRecoveryDecision =
       readonly withdraw?: true;
     };
 
-/** A retry the user is told about (legacy's session-level "retrying k/N in Ns"). */
+/** A retry the user is told about ("retrying k/N in Ns"). */
 export type DirectRetryNotice = {
   readonly attempt: number;
   readonly maxRetries: number;
@@ -137,7 +137,7 @@ export class DirectRecovery {
     if (!context.tools.allCompleted) return stop('unsettled_tools');
     const interrupted = context.failure.evidence === 'connection_interrupted';
     const output = context.hasCurrentRequestOutput ?? context.hasCommittedOutput;
-    // Legacy's run loop retries a cut stream silently, rolling back this request's partial text; its session layer
+    // A cut stream is retried silently, rolling back this request's partial text; the turn-level retry
     // refuses once output was committed.
     if (
       interrupted &&
@@ -205,10 +205,9 @@ export class DirectRecovery {
   }
 
   /**
-   * Legacy's effective schedule for a request that failed before any output: its run loop retries silently up to
-   * agent.retryAttempts times, then its session layer retries the turn with a "retrying k/N" notice, at most
-   * agent.retryAttempts times and while the recovery budget admits a replay. Each session retry restarts the
-   * silent ones. Its provider SDK also retries the HTTP request before this layer sees a failure.
+   * The schedule for a request that failed before any output: silent retries up to maxTransientRetries, then
+   * turn-level retries with a "retrying k/N" notice, at most maxTransientRetries times and while the recovery
+   * budget admits a replay. Each turn-level retry restarts the silent ones.
    */
   #transient(context: DirectRecoveryContext): DirectRecoveryDecision {
     const max = this.#options.maxTransientRetries;
@@ -284,19 +283,11 @@ function transientRetry(
   };
 }
 
-/** A turn that ran out of transient retries, with legacy's "Could not reach" notice. */
+/** A turn that ran out of transient retries, with the host's `retriesExhausted` notice. */
 export class RetriesExhausted extends Error {
   constructor(readonly failure: unknown, readonly notice: string) {
     super(failure instanceof Error ? failure.message : String(failure));
   }
-}
-
-/** Legacy's retry_exhausted line (initial-turn-recovery-handler.ts, conversation-event-handler.ts). */
-export function exhaustedNotice(provider: string, attempts: number): string {
-  return (
-    `Could not reach ${provider} after ${attempts} attempts. No model response was received.` +
-    '\n\nType /retry-turn to try again, or send a new message to move on.'
-  );
 }
 
 function chooseRecovery(context: DirectRecoveryContext): RecoveryChoice | undefined {
