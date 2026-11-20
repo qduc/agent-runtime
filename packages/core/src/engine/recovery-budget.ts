@@ -1,4 +1,4 @@
-/** Clean accounting leaf, reused without loading any legacy run driver. */
+/** Run-budget accounting leaf and the escalation action it selects. */
 import {
   RunBudget,
   clampRunBudgetPolicy,

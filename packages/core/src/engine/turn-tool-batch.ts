@@ -1,4 +1,4 @@
-/** Legacy's approval batch for one model response's root calls. */
+/** The approval batch for one model response's root calls. */
 import type { ApprovalRequirement, InteractionDecision, ToolInteractionRequest } from '../tools/contracts.js';
 
 export type BatchPlan = {
@@ -9,7 +9,7 @@ export type BatchPlan = {
 };
 
 /**
- * Legacy asks every staged call (questions, prompts, policy approvals) in
+ * Ask every staged call (questions, prompts, policy approvals) in
  * order, but applies only the last decision of each pass; the rest are asked
  * again on the next pass. Calls run in order up to the first undecided one.
  * Returns true when the pass that emptied the batch held a stop decision (an
@@ -39,7 +39,7 @@ export async function runApprovalBatch<Plan extends BatchPlan>(
   return stopped;
 }
 
-/** The interaction a staged call asks, or undefined for legacy's silent policy approval. */
+/** The interaction a staged call asks, or undefined for a silent policy approval. */
 export function batchRequest(
   approval: ApprovalRequirement | undefined,
   call: { readonly toolName: string; readonly input: unknown; readonly callId: string },
@@ -58,12 +58,12 @@ export function batchRequest(
   };
 }
 
-/** Policy-approved calls legacy stages still run alone, never in a parallel group. */
+/** Staged policy-approved calls still run alone, never in a parallel group. */
 export function batched(approval: ApprovalRequirement | undefined): boolean {
   return approval?.kind === 'none' && approval.batched === true;
 }
 
-/** Calls legacy places in its approval batch: questions, prompts and policy-approved calls. */
+/** Calls in the approval batch: questions, prompts and policy-approved calls. */
 function staged(plan: BatchPlan): boolean {
   const approval = plan.approval;
   return !plan.result && (approval?.kind === 'question' || approval?.kind === 'ask' || batched(approval));

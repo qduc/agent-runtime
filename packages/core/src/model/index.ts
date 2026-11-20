@@ -138,7 +138,7 @@ export type ModelRequest = {
    * Never serialize this capability to providers or Session facts.
    */
   readonly recovery?: { readonly budget: ModelRecoveryBudget; readonly dispatchClaimed?: boolean };
-  /** OpenAI Responses standard tier; unsupported adapters reject this flag. */
+  /** Request the provider's standard service tier after a tier rejection; unsupported adapters reject this flag. */
   readonly useStandardServiceTier?: boolean;
   /** A self-contained HTTP request on supported WS adapters, not an implicit retry. */
   readonly downgradeTransport?: boolean;
@@ -152,7 +152,7 @@ export type Usage = {
   readonly cacheWriteTokens?: number;
   /** Subset of cacheWriteTokens created with a one-hour TTL. */
   readonly cacheWrite1hTokens?: number;
-  /** The provider an aggregator routed this request to (OpenRouter's `provider`), when it reports one. */
+  /** The upstream provider an aggregator routed this request to, when it reports one. */
   readonly upstreamProvider?: string;
 };
 
@@ -171,14 +171,18 @@ export type ToolCallArgumentProgress = {
   readonly callIndex?: number;
 };
 
-export type CodexWeeklyQuota = { readonly usedPercent: number; readonly resetAt: number };
+/**
+ * Provider account or service state an adapter reports alongside a response (rate-limit windows, quota,
+ * credits). The shape of `status` belongs to the adapter and its host; the engine forwards it as is.
+ */
+export type ProviderStatus = {
+  readonly type: 'provider_status';
+  readonly provider: string;
+  readonly status: Readonly<Record<string, unknown>>;
+};
 
 export type ModelEvent =
-  | {
-      readonly type: 'codex_quota';
-      readonly quota: CodexWeeklyQuota | null;
-      readonly fiveHourQuota?: CodexWeeklyQuota | null;
-    }
+  | ProviderStatus
   | ToolCallArgumentProgress
   | { readonly type: 'text_delta'; readonly delta: string; readonly partId?: string }
   | {

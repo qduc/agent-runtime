@@ -5,7 +5,6 @@ import type { Item, ItemId, ModelEvent, ModelRequest, Usage } from '../model/ind
 import type { DirectManualCompactionOutcome, TurnDeps, TurnSpec } from './types.js';
 import {
   DirectRecovery,
-  exhaustedNotice,
   RetriesExhausted,
   type DirectRecoveryDecision,
   type DirectRetryNotice,
@@ -14,6 +13,7 @@ import { DirectContinuity, selfContained } from './recovery-continuity.js';
 import { hasCompleteDirectToolPairs } from './recovery-history.js';
 import { CompactionWrapUp, TurnCompaction } from './turn-model-compaction.js';
 import { enforceDirectInputLimit } from './recovery-compaction.js';
+import { turnText } from './host-text.js';
 import { NativeBudgetExhausted, serviceTierForRequest, type TurnBudgetControl } from './turn-budget.js';
 import { TurnEvents, cancelled } from './turn-events.js';
 import { TurnTools, type RootCall } from './turn-tools.js';
@@ -30,7 +30,7 @@ export class TurnModel<AppCtx = unknown> {
   #mainRequests = 0;
   #hasOutput = false;
   #requestHasOutput = false;
-  /** The last failed request's text-only output, which legacy's run loop withdraws before a retry. */
+  /** The last failed request's text-only output, which is withdrawn before a retry. */
   #withdrawable: { modelStep: number; start: number; count: number; hadOutput: boolean } | undefined;
   #interruptTextStream?: () => void;
   readonly #compaction: TurnCompaction<AppCtx>;
@@ -113,7 +113,7 @@ export class TurnModel<AppCtx = unknown> {
         if (decision.kind === 'stop')
           throw decision.exhaustedAfter === undefined
             ? error
-            : new RetriesExhausted(error, exhaustedNotice(this.spec.model.provider, decision.exhaustedAfter));
+            : new RetriesExhausted(error, turnText(this.deps.text, 'retriesExhausted')(this.spec.model.provider, decision.exhaustedAfter));
         if (decision.notice) await this.#retryNotice(decision.notice, error);
         retry = decision;
         if (retry.withdraw) await this.#withdraw(history);
@@ -124,7 +124,7 @@ export class TurnModel<AppCtx = unknown> {
         // Respect upstream Retry-After without sleeping past the existing
         // recovery envelope or inventing a shorter permitted retry delay.
         if (remaining !== undefined && retry.delayMs >= remaining) throw error;
-        // Legacy observes only its model-behavior retries; transport retries stay silent (SDK-level).
+        // Only model-behavior retries are observable; transport retries stay silent.
         const { attempt, maxRetries, delayMs } = retry;
         if (retry.recovery === 'model_behavior')
           await this.events.publish({ type: 'model_retrying', attempt, maxRetries, delayMs });
@@ -173,7 +173,7 @@ export class TurnModel<AppCtx = unknown> {
     }
   }
 
-  /** Legacy's run loop rolls back a failed attempt's partial text before retrying it. */
+  /** Roll back a failed attempt's partial text before retrying it. */
   async #withdraw(history: Item[]): Promise<void> {
     const withdrawn = this.#withdrawable;
     if (!withdrawn) return;
@@ -183,7 +183,7 @@ export class TurnModel<AppCtx = unknown> {
     await this.events.publish({ type: 'text_delta', delta: '', modelStep: withdrawn.modelStep, withdrawn: true });
   }
 
-  /** Legacy's session-level retry notice; live only, like its system message. */
+  /** A retry the user is told about; live only. */
   async #retryNotice(notice: DirectRetryNotice, error: unknown): Promise<void> {
     await this.events.publish({
       type: 'retrying',
@@ -191,7 +191,6 @@ export class TurnModel<AppCtx = unknown> {
       maxRetries: notice.maxRetries,
       delayMs: notice.delayMs,
       error: toModelError(error),
-      toolName: notice.retryType === 'upstream' ? 'turn' : 'conversation',
       retryType: notice.retryType,
     });
   }
@@ -253,6 +252,8 @@ export class TurnModel<AppCtx = unknown> {
       maxRequestInputTokens: this.deps.compaction?.maxRequestInputTokens,
       contextWindow:
         this.deps.compaction?.contextWindow ?? this.deps.models.resolve(request.model).catalogContextWindow,
+      ...(this.deps.compaction?.estimator ? { estimator: this.deps.compaction.estimator } : {}),
+      ...(this.deps.text ? { text: this.deps.text } : {}),
     });
   }
 
@@ -264,7 +265,7 @@ export class TurnModel<AppCtx = unknown> {
       model: this.spec.model,
       ...(this.spec.affinity ? { affinity: this.spec.affinity } : {}),
       instructions: this.spec.instructions,
-      input: fromLastReplacementBoundary(history),
+      input: fromLastReplacementBoundary(history, this.deps.isProviderCheckpoint),
       tools: this.spec.tools,
       ...(this.spec.reasoning !== undefined ? { reasoning: this.spec.reasoning } : {}),
       ...(this.spec.temperature !== undefined ? { temperature: this.spec.temperature } : {}),
@@ -431,7 +432,7 @@ export class TurnModel<AppCtx = unknown> {
             }
             break;
           }
-          case 'codex_quota':
+          case 'provider_status':
             await this.events.publish(event);
             break;
           case 'usage':
@@ -504,12 +505,15 @@ export class TurnModel<AppCtx = unknown> {
 
 /** Explicit replacement metadata cuts the provider prefix; additive summaries never do.
  * Local compaction already installs its entire checkpoint/tail through accepted history_replaced. */
-function fromLastReplacementBoundary(history: readonly Item[]): Item[] {
+function fromLastReplacementBoundary(
+  history: readonly Item[],
+  isProviderCheckpoint: TurnDeps['isProviderCheckpoint'],
+): Item[] {
   for (let index = history.length - 1; index >= 0; index--) {
     const item = history[index]!;
     if (
       (item.type === 'summary' && item.replaces.length > 0) ||
-      (item.type === 'provider_opaque' && item.provider === 'openai' && item.item.type === 'compaction')
+      (item.type === 'provider_opaque' && isProviderCheckpoint?.(item) === true)
     )
       return history.slice(index);
   }

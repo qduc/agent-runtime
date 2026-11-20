@@ -80,7 +80,7 @@ export class TurnBudgetControl<AppCtx = unknown> {
     const serviceTier = input.serviceTier ?? 'standard';
     // Subscriptions have no per-token rate to look up. A provider-reported
     // charge still wins; otherwise the request stays unpriced instead of
-    // inventing a Codex/Grok dollar amount from catalog rates.
+    // inventing a dollar amount from catalog rates.
     const subscription = this.deps.accounting?.isSubscriptionProvider?.(input.model.provider) ?? false;
     const record = computeModelCost({
       requestId: input.requestId,
@@ -162,7 +162,7 @@ export class TurnBudgetControl<AppCtx = unknown> {
     }
     const observations = [
       ...this.#observations.splice(0),
-      // Count the request about to be dispatched, as the legacy loop did: a backstop of N admits N requests, not N + 1.
+      // Count the request about to be dispatched, so a backstop of N admits N requests, not N + 1.
       ...this.state.evaluate({ turns: this.#turns + 1, costRecords: [...costs.values()] }),
     ];
     const stall = this.state.takeStallEvidence();

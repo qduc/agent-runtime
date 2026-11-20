@@ -2,6 +2,15 @@
 export * from './engine/index.js';
 export type * from './engine/types.js';
 export { startNestedTurn } from './engine/turn.js';
+export * from './engine/host-text.js';
+export {
+  defaultContextEstimator,
+  estimateDirectContext,
+  type ContextEstimator,
+  type DirectContextEstimate,
+} from './engine/context-estimate.js';
+export { defaultCompactionPrompts, type CompactionPrompts } from './engine/prompts/context-compaction.js';
+export type { DirectCompactionHooks } from './engine/recovery-compaction.js';
 export {
   DirectContinuity,
   type DirectContinuityBinding,

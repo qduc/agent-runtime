@@ -49,7 +49,7 @@ type Plan<AppCtx> = {
   readonly approval?: ApprovalRequirement;
   readonly parallelSafe: boolean;
   readonly result?: ToolResult;
-  /** The decision legacy's approval batch applied to this call. */
+  /** The decision the response's approval batch applied to this call. */
   decision?: InteractionDecision;
 };
 type StopTarget = {
@@ -70,7 +70,7 @@ export class TurnTools<AppCtx = unknown> {
   #executionOrdinal = 0;
   #closed = false;
   #stop: StopTarget | undefined;
-  /** Legacy ends the segment after a batch emptied by a stop decision settles. */
+  /** The segment ends after a batch emptied by a stop decision settles. */
   #batchStopped = false;
 
   constructor(
@@ -91,6 +91,10 @@ export class TurnTools<AppCtx = unknown> {
     this.#registry = registry ?? this.deps.tools;
   }
 
+  #standalone(toolName: string): boolean {
+    return this.#registry?.get(toolName)?.standalone === true;
+  }
+
   get completed(): number {
     return this.#completed;
   }
@@ -109,13 +113,13 @@ export class TurnTools<AppCtx = unknown> {
     return { item, executionId: execution.executionId, execution, modelStep };
   }
 
-  /** Plan all complete calls, decide them like legacy's approval batch (turn-tool-batch.ts),
+  /** Plan all complete calls, decide them as one approval batch (turn-tool-batch.ts),
    * then settle contiguous safe batches in provider order. */
   async run(calls: readonly RootCall[], history: Item[]): Promise<void> {
     const plans: Plan<AppCtx>[] = [];
     for (const call of calls) {
       plans.push(
-        ['goal_check', 'session_rollover'].includes(call.item.toolName) && calls.length !== 1
+        calls.length !== 1 && this.#standalone(call.item.toolName)
           ? {
               call,
               parallelSafe: false,
@@ -213,7 +217,7 @@ export class TurnTools<AppCtx = unknown> {
     try {
       this.#check();
       if (this.stopped) return errorResult('Tool execution stopped after interaction resolution');
-      // Legacy records a call answered at once (unknown tool, bad input) as started and finished.
+      // A call answered at once (unknown tool, bad input) is recorded as started and finished.
       const immediate = plan.result;
       if (immediate)
         return await this.#physical(
@@ -307,8 +311,7 @@ export class TurnTools<AppCtx = unknown> {
       ) => {
         const parent = current();
         this.#checkBody(parent);
-        // Legacy's propose_goal is a run_code script tool, so a script may call it.
-        if (['goal_check', 'session_rollover'].includes(descriptor.toolName))
+        if (this.#standalone(descriptor.toolName))
           throw new Error(`${descriptor.toolName} is root-only`);
         const execution = this.#allocate(
           descriptor.toolName,

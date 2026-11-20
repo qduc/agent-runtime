@@ -15,7 +15,7 @@ export interface NormalizedUsage {
   tokens_per_second_estimated?: boolean;
   /**
    * True when the settled rate exceeded MAX_PLAUSIBLE_DECODE_TPS: it measures
-   * a burst or tail window, not sustained decode, so the footer hides it.
+   * a burst or tail window, not sustained decode, so a client should not show it as decode speed.
    * Carried like tokens_per_second (latest wins, never summed).
    */
   tokens_per_second_burst?: boolean;

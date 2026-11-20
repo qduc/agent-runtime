@@ -1,6 +1,6 @@
 # Agent harness core
 
-The portable, application-owned turn loop used by Term2. Hosts own history,
+A portable, application-owned turn loop (first used by Term2). Hosts own history,
 persistence, providers, tools, and application context. This ESM package requires
 Node 24 and has no runtime dependencies. Import only
 `@qduc/agent-core`; implementation subpaths are not exported.
@@ -26,6 +26,12 @@ engine-owned. Supply plain `toolContext` data or `createToolContext(binding)`
 for capabilities bound to the current physical execution. A factory exception
 ends the turn before the tool body starts.
 
+A tool with `standalone: true` is a control tool: if a model response contains it
+together with other calls it gets an error result instead of running, and
+`ToolContext.executeChild` refuses it, so only a root call can invoke it. The
+engine reads the flag from the registry that resolved the call; it knows no tool
+names of its own.
+
 ## Model identity
 
 `ModelRequest.affinity` and `TurnSpec.affinity` carry provider identity explicitly:
@@ -36,10 +42,10 @@ stable. Hosts give nested and advisory requests their own identity; `startNested
 accepts affinity with its turn ID. The engine carries it through retries and both
 local and native compaction. The fields are host inputs, not history or events.
 
-Model `codex_quota` events carry the existing weekly `quota` (or `null`) and may
-also carry `fiveHourQuota` (a quota or `null`). A five-hour-only observation can
-use `quota: null`; omitting `fiveHourQuota` preserves the existing event shape.
-The turn engine forwards these events to the host unchanged.
+Model `provider_status` events (`{ provider, status }`) carry provider account or
+service state such as rate-limit windows or quota. `status` is an adapter-defined
+record; the turn engine forwards the event to the host unchanged as a live-only
+`TurnEvent`.
 
 ## Host seams
 
@@ -48,7 +54,9 @@ The turn engine forwards these events to the host unchanged.
 | `prepareRequest` | Before every model dispatch, receives the request plus turn ID, model step, and signal. Returns the live request and optional tool registry. Stored history stays unchanged. |
 | `takeSteering` and `handle.steer()` | Admit new user items at the next request boundary; do not interrupt a response in flight. |
 | `interaction_required` and `handle.answer()` | Approval or question waits for the matching answer. An unanswered request waits until cancellation; hosts own timeout policy. |
-| `normalStop` | After a model response without tool calls, stop or continue with a reminder. |
+| `normalStop` | After a model response without tool calls, stop or continue with a reminder. A stop with a host-defined `terminalCause` string ends the turn `interrupted` with that cause. |
+| `text` | Host wording (`TurnText`): notice items (`notice(text, source)`), the exhausted-retries notice, compaction hard-fit and no-cold-turn messages, request-input-limit refusals. Each hook falls back to `defaultTurnText`. |
+| `isProviderCheckpoint` | Marks a provider-native compaction item: requests start from the newest one and local compaction will not summarize it. Without it only `summary` items with `replaces` cut the request prefix. |
 | `runNested` | Host assigns child identity and lifetime, runs the same loop, and returns its result. The host routes child interactions. |
 | Event acceptance | Every emitted receipt is acknowledged only after the host durably accepts its event. |
 
@@ -63,6 +71,15 @@ compaction path; history replacements take effect after host acceptance. Budget
 policy and continuity are optional. A host can supply `accounting` pricing and
 subscription callbacks; without them, actual provider charges are retained and
 unknown rates stay unpriced. No provider catalog or host settings are loaded.
+
+`TurnDeps.compaction` also takes optional hooks (`DirectCompactionHooks`):
+`estimator` (a `ContextEstimator`; default `defaultContextEstimator`, ceil(bytes/4)
+of the request JSON) drives the triggers, admission check, hot-tail cut and the
+estimates in compaction events; `prompts` (`CompactionPrompts`; default
+`defaultCompactionPrompts`) supplies the summary requests and checkpoint wrapper;
+`isHostMessage` marks host-written user messages that local compaction may
+summarize instead of protecting verbatim; `receiptArguments` previews a call's
+arguments in its tool receipt line.
 
 ### Context window: capacity versus the host's assumption
 
@@ -89,12 +106,36 @@ override even when the host normally adds session tools. Provider adapters must
 forward the override; an unexpected summary tool call still fails without execution.
 
 `startNestedTurn` scopes offered tools and enforces native branch limits. Hosts
-own tool-name policy; Term2 applies its root-only tool restriction in Session.
-The public continuity, tool-pair repair check, context policy, budget, and cost
-helpers support Term2's host modules. Shared `ModelFailure` and retry error/budget
+own tool-name policy. The public continuity, tool-pair repair check, context
+policy, budget, and cost helpers are host building blocks. Shared `ModelFailure` and retry error/budget
 constructors let adapters supply live recovery evidence without losing class
 identity across the package boundary. Engine driver classes and compaction
 implementation helpers remain private.
+
+### Migrating to 0.3
+
+0.3 removes host-specific behaviour from the engine; a host that relied on it
+supplies it through the seams above.
+
+- `codex_quota` model and turn events became `provider_status`; `CodexWeeklyQuota`
+  is gone. Emit `{ type: 'provider_status', provider, status }` from the adapter
+  and read your own shape from `status`.
+- The engine no longer treats `goal_check` and `session_rollover` as control tools;
+  set `standalone: true` on such tools.
+- Notice items no longer get a `[Mode Notice] ` prefix; add one with `text.notice`.
+  Failure texts no longer mention slash commands or settings keys; restore yours
+  with the other `text` hooks.
+- The context estimate is now bytes/4 of the portable request JSON. To keep a
+  different estimate (for example your own request shape) supply `compaction.estimator`.
+- Local compaction protects every user message unless `compaction.isHostMessage`
+  says the host wrote it; the built-in background-notice prefixes are gone.
+- OpenAI `compaction` items no longer cut the request prefix by provider name;
+  supply `isProviderCheckpoint`.
+- `terminalCause` on `NormalStopDecision`, `TurnResult` and `NestedRunOutcome` is
+  a `string`; the `retrying` turn event no longer has `toolName` (derive it from
+  `retryType` if needed).
+- The default compaction request no longer mentions completion verification;
+  supply `compaction.prompts` to keep custom wording.
 
 ## Distribution and verification
 
