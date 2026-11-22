@@ -114,16 +114,17 @@ export class TurnModel<AppCtx = unknown> {
           throw decision.exhaustedAfter === undefined
             ? error
             : new RetriesExhausted(error, turnText(this.deps.text, 'retriesExhausted')(this.spec.model.provider, decision.exhaustedAfter));
+        const remaining = this.#recovery.budget.remainingMs();
+        // Respect upstream Retry-After without sleeping past the existing recovery envelope or
+        // inventing a shorter permitted retry delay. Checked before the notice: a retry the clock
+        // forbids is never announced. Transient retries already settle this in DirectRecovery.
+        if (remaining !== undefined && decision.delayMs >= remaining) throw error;
         if (decision.notice) await this.#retryNotice(decision.notice, error);
         retry = decision;
         if (retry.withdraw) await this.#withdraw(history);
         this.#standardTier ||= retry.useStandardServiceTier;
         this.#downgraded ||= retry.downgradeTransport;
         if (retry.downgradeTransport) this.#continuity.breakChaining();
-        const remaining = this.#recovery.budget.remainingMs();
-        // Respect upstream Retry-After without sleeping past the existing
-        // recovery envelope or inventing a shorter permitted retry delay.
-        if (remaining !== undefined && retry.delayMs >= remaining) throw error;
         // Only model-behavior retries are observable; transport retries stay silent.
         const { attempt, maxRetries, delayMs } = retry;
         if (retry.recovery === 'model_behavior')

@@ -157,6 +157,14 @@ the default recovery budget's physical-attempt cap is raised to
 `maxTransientRetries` when that is larger than 3, so it no longer stops a retry the
 caller asked for; the 90 s recovery clock still bounds the episode.
 
+0.3.0-alpha.3 puts that pre-output stream cut on the same counter as a failed
+request, so a provider that alternates between the two still receives n + 1
+requests, with one `k/n` series of `retrying` events. A transient retry whose delay
+cannot fit the remaining recovery clock is decided before anything is announced:
+recovery stops with `recovery_budget` and `exhaustedAfter` set to the requests
+sent, so no `retrying` event promises a request that is never made. The engine
+checks every other recovery kind's delay against the clock before its notice too.
+
 ## Distribution and verification
 
 Prereleases go to npm under the `next` dist-tag, so `npm install @qduc/agent-core`
