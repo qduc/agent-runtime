@@ -137,6 +137,17 @@ supplies it through the seams above.
 - The default compaction request no longer mentions completion verification;
   supply `compaction.prompts` to keep custom wording.
 
+### Retry count in 0.3.0-alpha.1
+
+`recovery.maxTransientRetries = n` now bounds the retries of a request that fails
+before any output to n in total, so a provider that keeps failing receives n + 1
+requests, and each retry emits a `retrying` event numbered `k/n`. Earlier 0.3
+prereleases ran n silent retries, then one numbered turn-level retry that ran the
+silent ones again: 2 × (n + 1) requests for n ≥ 1. A transient retry now claims a
+physical attempt from the recovery budget but not its automatic replay, and the
+exhausted-retries notice counts the requests sent. Retries after a stream was cut
+(`connection_interrupted`) are unchanged.
+
 ## Distribution and verification
 
 Prereleases go to npm under the `next` dist-tag, so `npm install @qduc/agent-core`

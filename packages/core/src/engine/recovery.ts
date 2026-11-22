@@ -205,34 +205,23 @@ export class DirectRecovery {
   }
 
   /**
-   * The schedule for a request that failed before any output: silent retries up to maxTransientRetries, then
-   * turn-level retries with a "retrying k/N" notice, at most maxTransientRetries times and while the recovery
-   * budget admits a replay. Each turn-level retry restarts the silent ones.
+   * The schedule for a request that failed before any output: at most maxTransientRetries retries in the
+   * episode, each announced with a "retrying k/N" notice, so a request that keeps failing reaches the
+   * provider maxTransientRetries + 1 times. Each retry rebuilds the same request from accepted history; it
+   * is not a whole-turn replay (see chooseRecovery), so it spends a physical attempt but not the
+   * automatic-replay claim. exhaustedAfter counts the requests already sent.
    */
   #transient(context: DirectRecoveryContext): DirectRecoveryDecision {
     const max = this.#options.maxTransientRetries;
-    const retryAfterMs = context.failure.error.retryAfterMs;
-    const random = this.#options.random;
-    if (this.#silentRetries < max) {
-      const attempt = ++this.#silentRetries;
-      const admission = this.budget.describeAdmission({ automaticReplayRequired: false });
-      return transientRetry(attempt, max, recoveryDelay(attempt, retryAfterMs, random), admission);
-    }
-    this.#silentRetries = 0;
     const attempt = this.#transientRetries + 1;
     if (attempt > max) return { ...stop('retry_limit'), exhaustedAfter: attempt };
-    this.#transientRetries = attempt;
     this.budget.noteRetryableFailure();
-    const notice = {
-      attempt,
-      maxRetries: max,
-      delayMs: recoveryDelay(attempt, retryAfterMs, random),
-      retryType: 'upstream' as const,
-    };
-    const admission = this.budget.describeAdmission({ automaticReplayRequired: true });
-    if (!this.budget.claimAutomaticReplay() || !this.budget.claimPhysicalAttempt())
-      return { ...stop('recovery_budget'), admission, exhaustedAfter: this.budget.physicalAttempts };
-    return { ...transientRetry(attempt, max, notice.delayMs, admission), automaticReplay: true, notice };
+    const admission = this.budget.describeAdmission({ automaticReplayRequired: false });
+    if (!this.budget.claimPhysicalAttempt()) return { ...stop('recovery_budget'), admission, exhaustedAfter: attempt };
+    this.#transientRetries = attempt;
+    const delayMs = recoveryDelay(attempt, context.failure.error.retryAfterMs, this.#options.random);
+    const notice = { attempt, maxRetries: max, delayMs, retryType: 'upstream' as const };
+    return { ...transientRetry(attempt, max, delayMs, admission), notice };
   }
 
   #withinLimit(kind: RecoveryKind): boolean {
