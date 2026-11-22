@@ -150,26 +150,22 @@ export class TurnModel<AppCtx = unknown> {
         return { kind: 'blocked', reason: result.kind === 'blocked' ? result.reason : result.kind };
       } catch (error) {
         if (this.signal.aborted) throw cancelled();
-        if (error instanceof NativeBudgetExhausted) throw error;
-        // Auxiliary summary text is private proposal data, not committed root
-        // output or a tool effect. Retrying it cannot replay accepted tools.
-        const pairs = hasCompleteDirectToolPairs(history);
-        const decision = this.#recovery.recover({
-          failure: recoveryFailure(error),
-          cancelled: false,
-          fullHistoryAvailable: pairs,
-          freshStartAllowed: pairs,
-          hasCommittedOutput: false,
-          hasCurrentRequestOutput: false,
-          tools: { completed: 0, allCompleted: true, completedPairsInHistory: pairs },
-        });
-        if (decision.kind === 'stop') throw error;
-        this.#standardTier ||= decision.useStandardServiceTier;
-        this.#downgraded ||= decision.downgradeTransport;
-        if (decision.downgradeTransport) this.#continuity.breakChaining();
-        const remaining = this.#recovery.budget.remainingMs();
-        if (remaining !== undefined && decision.delayMs >= remaining) throw error;
-        await delay(decision.delayMs, this.signal);
+        // The summary (or native compaction) request already retried transient failures itself, up to
+        // maxTransientRetries (retryAuxiliary). Manual compaction adds only the one-shot request-shape
+        // fallbacks, never a second retry layer on the turn's recovery budget: that layer started the
+        // recovery clock and re-dispatched without its reservation, so the host refused the request and the
+        // user saw that refusal instead of the provider's error.
+        const evidence = recoveryFailure(error).evidence;
+        if (evidence === 'service_tier_rejected' && !this.#standardTier) {
+          this.#standardTier = true;
+          continue;
+        }
+        if (evidence === 'transport_downgrade' && !this.#downgraded) {
+          this.#downgraded = true;
+          this.#continuity.breakChaining();
+          continue;
+        }
+        throw error;
       }
     }
   }
