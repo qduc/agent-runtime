@@ -169,6 +169,22 @@ before its backoff; an adapter must send it rather than re-check the deadline,
 which timer lateness can push past. With a caller-supplied `budget`, its
 physical-attempt cap now also bounds retries of a stream cut before output.
 
+0.3.0-alpha.4 gives manual compaction (`TurnModel.compact`, a host's `/compact`) one
+retry layer instead of two. The summary request, and now a native compaction call,
+retries a transient or interrupted failure up to `maxTransientRetries` times, so a
+provider that keeps failing receives n + 1 requests and the operation fails with the
+provider's own error. `compact()` no longer runs turn-level recovery on top: that
+started the recovery clock and re-dispatched without the reservation it had claimed,
+so a host enforcing `dispatchClaimed` refused the request and reported that refusal
+instead of the provider's error. Manual compaction keeps the one-shot request-shape
+fallbacks (standard service tier, transport downgrade), which use no recovery budget;
+in a host enforcing `dispatchClaimed` they are now actually sent. Automatic native
+compaction changes too: it used to try the compact endpoint once and continue
+uncompacted, and now retries it like an automatic summary does, up to n times,
+before continuing. Every auxiliary retry stays within a 90 s recovery clock from its
+first failure: a retry whose delay (an upstream `Retry-After` included) would end
+past it is not waited for.
+
 ## Distribution and verification
 
 Prereleases go to npm under the `next` dist-tag, so `npm install @qduc/agent-core`
