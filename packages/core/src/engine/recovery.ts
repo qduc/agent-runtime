@@ -144,26 +144,19 @@ export class DirectRecovery {
     if (!context.tools.allCompleted) return stop('unsettled_tools');
     const interrupted = context.failure.evidence === 'connection_interrupted';
     const output = context.hasCurrentRequestOutput ?? context.hasCommittedOutput;
-    // A cut stream is retried from full history up to maxTransientRetries times. Partial text is rolled
-    // back silently; a stream cut before any output is announced k/n like any other retry. The turn-level
-    // retry refuses once output was committed.
-    if (
-      interrupted &&
-      (!output || context.withdrawableOutput) &&
-      this.#silentRetries < this.#options.maxTransientRetries
-    ) {
+    // A stream cut before any output is the same request failing again: it shares the transient schedule,
+    // counter and notices, so mixed failure modes still send at most maxTransientRetries + 1 requests.
+    if (interrupted && !output) return this.#transient(context, 'connection_interrupted');
+    // Partial text from a cut stream is rolled back silently and the request retried from full history,
+    // up to maxTransientRetries times. The turn-level retry refuses once output was committed.
+    if (interrupted && context.withdrawableOutput && this.#silentRetries < this.#options.maxTransientRetries) {
       const attempt = ++this.#silentRetries;
       const max = this.#options.maxTransientRetries;
       const delayMs = recoveryDelay(attempt, undefined, this.#options.random);
       const admission = this.budget.describeAdmission({ automaticReplayRequired: false });
-      const retry = transientRetry(attempt, max, delayMs, admission);
-      if (output) return { ...retry, recovery: 'chain', withdraw: true };
-      const notice = { attempt, maxRetries: max, delayMs, retryType: 'connection_interrupted' as const };
-      return { ...retry, recovery: 'chain', notice };
+      return { ...transientRetry(attempt, max, delayMs, admission), recovery: 'chain', withdraw: true };
     }
-    if (interrupted && output && context.withdrawableOutput) return stop('committed_output');
-    // Cut before any output and out of retries: stop, rather than open a second round of them.
-    if (interrupted && !output) return { ...stop('retry_limit'), exhaustedAfter: this.#silentRetries + 1 };
+    if (interrupted && context.withdrawableOutput) return stop('committed_output');
     if (interrupted) this.#silentRetries = 0;
     const choice = chooseRecovery(context);
     if (!choice) return stop(context.hasCommittedOutput ? 'committed_output' : 'unrecoverable');
@@ -220,17 +213,25 @@ export class DirectRecovery {
    * is not a whole-turn replay (see chooseRecovery), so it spends a physical attempt but not the
    * automatic-replay claim. exhaustedAfter counts the requests already sent.
    */
-  #transient(context: DirectRecoveryContext): DirectRecoveryDecision {
+  #transient(
+    context: DirectRecoveryContext,
+    retryType: DirectRetryNotice['retryType'] = 'upstream',
+  ): DirectRecoveryDecision {
     const max = this.#options.maxTransientRetries;
     const attempt = this.#transientRetries + 1;
     if (attempt > max) return { ...stop('retry_limit'), exhaustedAfter: attempt };
     this.budget.noteRetryableFailure();
-    const admission = this.budget.describeAdmission({ automaticReplayRequired: false });
-    if (!this.budget.claimPhysicalAttempt()) return { ...stop('recovery_budget'), admission, exhaustedAfter: attempt };
-    this.#transientRetries = attempt;
     const delayMs = recoveryDelay(attempt, context.failure.error.retryAfterMs, this.#options.random);
-    const notice = { attempt, maxRetries: max, delayMs, retryType: 'upstream' as const };
-    return { ...transientRetry(attempt, max, delayMs, admission), notice };
+    const admission = this.budget.describeAdmission({ automaticReplayRequired: false });
+    // A retry whose wait would outlast the recovery clock is never announced or sent: the turn settles
+    // now with the requests actually made, rather than promising a retry the clock then forbids.
+    const remainingMs = this.budget.remainingMs();
+    if ((remainingMs !== undefined && delayMs >= remainingMs) || !this.budget.claimPhysicalAttempt())
+      return { ...stop('recovery_budget'), admission, exhaustedAfter: attempt };
+    this.#transientRetries = attempt;
+    const notice = { attempt, maxRetries: max, delayMs, retryType };
+    const retry = transientRetry(attempt, max, delayMs, admission);
+    return retryType === 'upstream' ? { ...retry, notice } : { ...retry, recovery: 'chain', notice };
   }
 
   #withinLimit(kind: RecoveryKind): boolean {
