@@ -137,7 +137,7 @@ supplies it through the seams above.
 - The default compaction request no longer mentions completion verification;
   supply `compaction.prompts` to keep custom wording.
 
-### Retry count in 0.3.0-alpha.1
+### Retry count from 0.3.0-alpha.1
 
 `recovery.maxTransientRetries = n` now bounds the retries of a request that fails
 before any output to n in total, so a provider that keeps failing receives n + 1
@@ -145,8 +145,17 @@ requests, and each retry emits a `retrying` event numbered `k/n`. Earlier 0.3
 prereleases ran n silent retries, then one numbered turn-level retry that ran the
 silent ones again: 2 × (n + 1) requests for n ≥ 1. A transient retry now claims a
 physical attempt from the recovery budget but not its automatic replay, and the
-exhausted-retries notice counts the requests sent. Retries after a stream was cut
-(`connection_interrupted`) are unchanged.
+exhausted-retries notice counts the requests sent.
+
+0.3.0-alpha.2 applies the same count to a stream cut before any output
+(`connection_interrupted` with no output): n retries from full history, each
+emitting a `retrying` event of type `connection_interrupted` numbered `k/n`, then a
+stop that reports n + 1 requests. alpha.1 still followed them with a chain retry
+that ran them all again. A stream cut after output is unchanged: its partial text is
+withdrawn and retried silently up to n times. Without a caller-supplied `budget`,
+the default recovery budget's physical-attempt cap is raised to
+`maxTransientRetries` when that is larger than 3, so it no longer stops a retry the
+caller asked for; the 90 s recovery clock still bounds the episode.
 
 ## Distribution and verification
 

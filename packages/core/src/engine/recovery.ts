@@ -119,7 +119,14 @@ export class DirectRecovery {
     assertRetryCount(options.maxTransientRetries);
     assertRetryCount(options.maxModelRetries ?? 2);
     this.#options = options;
-    this.budget = options.budget ?? new RetryRecoveryBudget();
+    // The default budget never refuses a retry the caller asked for: its attempt cap grows to
+    // maxTransientRetries, and the recovery clock still bounds the episode.
+    const fallback = new RetryRecoveryBudget();
+    this.budget =
+      options.budget ??
+      (options.maxTransientRetries > fallback.maxPhysicalAttempts
+        ? new RetryRecoveryBudget({ maxPhysicalAttempts: options.maxTransientRetries })
+        : fallback);
   }
 
   /** Call after Session has accepted the complete model response, never on a delta. */
@@ -137,24 +144,26 @@ export class DirectRecovery {
     if (!context.tools.allCompleted) return stop('unsettled_tools');
     const interrupted = context.failure.evidence === 'connection_interrupted';
     const output = context.hasCurrentRequestOutput ?? context.hasCommittedOutput;
-    // A cut stream is retried silently, rolling back this request's partial text; the turn-level retry
-    // refuses once output was committed.
+    // A cut stream is retried from full history up to maxTransientRetries times. Partial text is rolled
+    // back silently; a stream cut before any output is announced k/n like any other retry. The turn-level
+    // retry refuses once output was committed.
     if (
       interrupted &&
       (!output || context.withdrawableOutput) &&
       this.#silentRetries < this.#options.maxTransientRetries
     ) {
       const attempt = ++this.#silentRetries;
+      const max = this.#options.maxTransientRetries;
+      const delayMs = recoveryDelay(attempt, undefined, this.#options.random);
       const admission = this.budget.describeAdmission({ automaticReplayRequired: false });
-      const retry = transientRetry(
-        attempt,
-        this.#options.maxTransientRetries,
-        recoveryDelay(attempt, undefined, this.#options.random),
-        admission,
-      );
-      return { ...retry, recovery: 'chain', ...(output ? { withdraw: true as const } : {}) };
+      const retry = transientRetry(attempt, max, delayMs, admission);
+      if (output) return { ...retry, recovery: 'chain', withdraw: true };
+      const notice = { attempt, maxRetries: max, delayMs, retryType: 'connection_interrupted' as const };
+      return { ...retry, recovery: 'chain', notice };
     }
     if (interrupted && output && context.withdrawableOutput) return stop('committed_output');
+    // Cut before any output and out of retries: stop, rather than open a second round of them.
+    if (interrupted && !output) return { ...stop('retry_limit'), exhaustedAfter: this.#silentRetries + 1 };
     if (interrupted) this.#silentRetries = 0;
     const choice = chooseRecovery(context);
     if (!choice) return stop(context.hasCommittedOutput ? 'committed_output' : 'unrecoverable');
