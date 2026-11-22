@@ -164,6 +164,10 @@ cannot fit the remaining recovery clock is decided before anything is announced:
 recovery stops with `recovery_budget` and `exhaustedAfter` set to the requests
 sent, so no `retrying` event promises a request that is never made. The engine
 checks every other recovery kind's delay against the clock before its notice too.
+A request carrying `recovery.dispatchClaimed` was admitted against the clock
+before its backoff; an adapter must send it rather than re-check the deadline,
+which timer lateness can push past. With a caller-supplied `budget`, its
+physical-attempt cap now also bounds retries of a stream cut before output.
 
 ## Distribution and verification
 
