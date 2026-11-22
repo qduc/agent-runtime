@@ -361,14 +361,16 @@ export class TurnCompaction<AppCtx = unknown> {
  * A summary request runs like any model run, so a retryable failure is retried up to maxTransientRetries
  * with backoff, even after part of the response arrived. The summary is private text, so it is held until the
  * request completes and a retry never repeats any of it. These are the only retries an auxiliary request
- * gets: manual compaction does not add turn-level recovery on top (TurnModel.compact), so a request that
- * keeps failing reaches the provider maxTransientRetries + 1 times and its own error is what the user sees.
+ * gets, in automatic and manual compaction alike: manual compaction does not add turn-level recovery on top
+ * (TurnModel.compact), so a request that keeps failing reaches the provider maxTransientRetries + 1 times
+ * (fewer if the recovery clock runs out) and its own error is what the user sees.
  */
 async function* retrySummary(
   attempt: () => AsyncGenerator<ModelEvent>,
   maxRetries: number,
   signal: AbortSignal,
 ): AsyncGenerator<ModelEvent> {
+  const episode: AuxiliaryRetryEpisode = {};
   for (let retry = 1; ; retry++) {
     const events: ModelEvent[] = [];
     try {
@@ -376,31 +378,49 @@ async function* retrySummary(
       yield* events;
       return;
     } catch (error) {
-      await auxiliaryBackoff(error, retry, maxRetries, signal);
+      await auxiliaryBackoff(error, retry, maxRetries, signal, episode);
     }
   }
 }
 
 /** The native-compaction counterpart of {@link retrySummary}: the same retry rule for a single call. */
 async function retryAuxiliary<T>(attempt: () => Promise<T>, maxRetries: number, signal: AbortSignal): Promise<T> {
+  const episode: AuxiliaryRetryEpisode = {};
   for (let retry = 1; ; retry++) {
     try {
       return await attempt();
     } catch (error) {
-      await auxiliaryBackoff(error, retry, maxRetries, signal);
+      await auxiliaryBackoff(error, retry, maxRetries, signal, episode);
     }
   }
 }
 
-/** Rethrows unless `error` is a transient or interrupted failure with retries left; otherwise waits its backoff. */
-async function auxiliaryBackoff(error: unknown, retry: number, maxRetries: number, signal: AbortSignal): Promise<void> {
+/**
+ * The recovery clock an auxiliary request's retries live within: the same 90 s as a root request's recovery
+ * episode, measured from the first failure. A retry whose delay (an upstream Retry-After included) would end
+ * past it is not waited for; the failure is rethrown at once.
+ */
+const AUXILIARY_RECOVERY_MS = 90_000;
+type AuxiliaryRetryEpisode = { firstFailureAt?: number };
+
+/** Rethrows unless `error` is a transient or interrupted failure with retries and clock left; otherwise waits. */
+async function auxiliaryBackoff(
+  error: unknown,
+  retry: number,
+  maxRetries: number,
+  signal: AbortSignal,
+  episode: AuxiliaryRetryEpisode,
+): Promise<void> {
   const failure = toModelError(error);
   const interrupted =
     (error as { recoveryEvidence?: unknown } | null)?.recoveryEvidence === 'connection_interrupted';
   const transient = failure.retryable && ['network', 'rate_limit', 'provider'].includes(failure.kind);
   if (signal.aborted || retry > maxRetries || !(transient || interrupted)) throw error;
+  episode.firstFailureAt ??= performance.now();
+  const delayMs = recoveryDelay(retry, failure.retryAfterMs);
+  if (performance.now() - episode.firstFailureAt + delayMs >= AUXILIARY_RECOVERY_MS) throw error;
   await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(resolve, recoveryDelay(retry, failure.retryAfterMs));
+    const timer = setTimeout(resolve, delayMs);
     signal.addEventListener('abort', () => (clearTimeout(timer), reject(cancelled())), { once: true });
   });
 }
